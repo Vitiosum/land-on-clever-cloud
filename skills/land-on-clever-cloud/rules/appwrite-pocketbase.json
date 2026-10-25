@@ -1,0 +1,43 @@
+{
+  "id": "appwrite-pocketbase",
+  "name": "Appwrite / PocketBase",
+  "wave": 3,
+  "coverage": "detect-only",
+  "priority": 75,
+  "corpus": [
+    "https://github.com/spinspire/pocketbase-sveltekit-starter",
+    "https://github.com/appwrite/playground-for-web"
+  ],
+  "detect": [
+    {
+      "path": "(^|/)appwrite(\\.config)?\\.json$",
+      "strength": "strong",
+      "signal": "appwrite.json"
+    },
+    {
+      "dep": "appwrite",
+      "strength": "strong"
+    },
+    {
+      "dep": "node-appwrite",
+      "strength": "strong"
+    },
+    {
+      "dep": "pocketbase",
+      "strength": "strong"
+    },
+    {
+      "path": "(^|/)pb_(hooks|migrations)/",
+      "strength": "strong",
+      "signal": "PocketBase hooks/migrations"
+    },
+    {
+      "code": "POCKETBASE_URL",
+      "strength": "weak",
+      "signal": "POCKETBASE_URL"
+    }
+  ],
+  "min_weak": 2,
+  "not_covered_note": "Keep the BaaS (landing A) or replace the backend. PocketBase = SQLite on disk → FS Bucket, single instance, never in HDS.",
+  "traps": []
+}

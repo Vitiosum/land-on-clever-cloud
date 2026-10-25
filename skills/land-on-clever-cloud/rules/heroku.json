@@ -1,0 +1,92 @@
+{
+  "id": "heroku",
+  "name": "Heroku (and generic Procfile)",
+  "wave": 1,
+  "coverage": "full",
+  "priority": 60,
+  "corpus": [
+    "https://github.com/heroku/python-getting-started",
+    "https://github.com/slyapustin/django-chatbot"
+  ],
+  "detect": [
+    {
+      "path": "(^|/)app\\.json$",
+      "content": "\"(addons|formation|buildpacks|env|environments)\"",
+      "strength": "strong",
+      "signal": "app.json (Heroku manifest)"
+    },
+    {
+      "path": "(^|/)heroku\\.yml$",
+      "strength": "strong",
+      "signal": "heroku.yml"
+    },
+    {
+      "code": "[\"']DYNO[\"']|\\bHEROKU_[A-Z_]+|herokuapp\\.com|devcenter\\.heroku\\.com",
+      "strength": "strong",
+      "signal": "Heroku platform reference in code",
+      "code_only": true
+    },
+    {
+      "path": "(^|/)Procfile$",
+      "strength": "weak",
+      "signal": "Procfile (generic: Heroku, Scalingo, Dokku, Cloud Run…)"
+    },
+    {
+      "path": "(^|/)runtime\\.txt$",
+      "strength": "weak",
+      "signal": "runtime.txt"
+    },
+    {
+      "path": "(^|/)project\\.toml$",
+      "content": "io\\.buildpacks",
+      "strength": "weak",
+      "signal": "Cloud Native Buildpacks project.toml"
+    }
+  ],
+  "min_weak": 1,
+  "components": {
+    "process_map": {
+      "web": {
+        "target": "native",
+        "detail": "the app; start command set explicitly (CC_PYTHON_MODULE+backend, or CC_RUN_COMMAND)"
+      },
+      "worker": {
+        "target": "native",
+        "detail": "CC_WORKER_COMMAND on the same app (no extra cost); a second app only for separate scaling"
+      },
+      "clock": {
+        "target": "native",
+        "detail": "clevercloud/cron.json + job script (empty cron environment: variables from a 600 file written by CC_PRE_RUN_HOOK, guard ${INSTANCE_NUMBER:-0}) or CC_WORKER_COMMAND"
+      },
+      "beat": {
+        "target": "native",
+        "detail": "Celery beat: CC_PYTHON_CELERY_USE_BEAT=true, or CC_WORKER_COMMAND"
+      },
+      "release": {
+        "target": "native",
+        "detail": "Django: CC_PYTHON_MANAGE_TASKS (runs at build); other stacks: CC_PRE_RUN_HOOK, idempotent (runs on every instance start)"
+      }
+    },
+    "addon_map": {
+      "heroku-postgresql": "postgresql",
+      "heroku-redis": "redis",
+      "heroku-key-value": "redis",
+      "jawsdb": "mysql",
+      "cleardb": "mysql",
+      "mongolab": "mongodb",
+      "bonsai": "elasticsearch",
+      "sendgrid": "mail",
+      "mailgun": "mail"
+    },
+    "platform_coupling": "code that switches on DYNO / HEROKU_* (e.g. IS_HEROKU_APP) takes its production branch only on Heroku: make that switch explicit (env var) or ALLOWED_HOSTS/DB/HTTPS stay in local mode on Clever",
+    "app_json_generator_secret": "generated on Clever with env-safe.sh generate NAME (value never printed)"
+  },
+  "traps": [
+    "The production settings branch is gated on Heroku-only variables (DYNO): on Clever the app runs in local mode (ALLOWED_HOSTS local, SQLite) and answers 400 — which still PASSES the default health check (200-499).",
+    "Heroku's Python buildpack runs collectstatic automatically; Clever does not: CC_PYTHON_MANAGE_TASKS=\"collectstatic --noinput\" (WhiteNoise manifest storage returns 500 otherwise).",
+    "release: phase → CC_PYTHON_MANAGE_TASKS runs during the build; with several instances anything in CC_PRE_RUN_HOOK runs on each.",
+    "Python version files (.python-version, runtime.txt): pin explicitly with CC_PYTHON_VERSION to an accepted version.",
+    "Config vars: copy with env-safe.sh push from a file the dev exports (heroku config -s > .env.heroku, untracked); never paste in chat.",
+    "DATABASE_URL: prefer reading POSTGRESQL_ADDON_URI in code (copied values do not follow credential rotation)."
+  ]
+}

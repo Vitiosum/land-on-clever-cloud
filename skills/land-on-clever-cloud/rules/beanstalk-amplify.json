@@ -1,0 +1,41 @@
+{
+  "id": "beanstalk-amplify",
+  "name": "AWS Elastic Beanstalk / Amplify",
+  "wave": 3,
+  "coverage": "detect-only",
+  "priority": 35,
+  "corpus": [
+    "https://github.com/aws-samples/eb-node-express-sample",
+    "https://github.com/aws-samples/amplify-vite-react-template"
+  ],
+  "detect": [
+    {
+      "path": "^\\.ebextensions/",
+      "strength": "strong",
+      "signal": ".ebextensions"
+    },
+    {
+      "path": "^\\.elasticbeanstalk/",
+      "strength": "strong",
+      "signal": ".elasticbeanstalk"
+    },
+    {
+      "path": "(^|/)amplify\\.yml$",
+      "strength": "strong",
+      "signal": "amplify.yml"
+    },
+    {
+      "path": "^amplify/(backend|data|auth)",
+      "strength": "strong",
+      "signal": "amplify/ backend"
+    },
+    {
+      "path": "(^|/)Buildfile$",
+      "strength": "weak",
+      "signal": "Buildfile"
+    }
+  ],
+  "min_weak": 2,
+  "not_covered_note": "Front portable; DynamoDB/SNS/Cognito/AppSync have no Clever equivalent (rewrite). Mapping not written yet.",
+  "traps": []
+}

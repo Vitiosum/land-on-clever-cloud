@@ -1,0 +1,55 @@
+{
+  "_readme": [
+    "Copy to check.config.json and adapt it. The secret key is NOT in it: it is read from the variable named by service_role_key_env (default SUPABASE_SECRET_KEY).",
+    "sb_publishable_ / sb_secret_ keys: sent in the apikey header only. Legacy keys (anon / service_role JWT) are accepted, but Supabase deprecates them by the end of 2026.",
+    "Reading the keys from the CLI: supabase projects api-keys --project-ref <ref>",
+    "Expected values are written 'resource@identity'. Possible values:",
+    "  0    the resource must be invisible to this identity",
+    "  >0   at least one row must be visible",
+    "  *    any number, but no error",
+    "  <n>  an exact number — use only on a frozen corpus",
+    "Prefer 0 and >0: the corpus varies from one environment to another, the access rules do not.",
+    "That is what lets you replay the same check on the source and on the target."
+  ],
+
+  "url": "https://xxxxxxxxxxxx.supabase.co",
+  "anon_key": "sb_publishable_...",
+  "service_role_key_env": "SUPABASE_SECRET_KEY",
+
+  "accounts": [
+    { "email": "patient@example.test",      "role": "patient" },
+    { "email": "practitioner@example.test", "role": "practitioner", "mfa": true },
+    { "email": "frontdesk@example.test",    "role": "frontdesk" }
+  ],
+
+  "resources": [
+    { "name": "clinics",          "schema": "medical" },
+    { "name": "patients",         "schema": "medical" },
+    { "name": "care_episodes",    "schema": "medical" },
+    { "name": "appointments",     "schema": "medical" },
+    { "name": "consultations",    "schema": "medical" },
+    { "name": "documents",        "schema": "medical" },
+    { "name": "messages",         "schema": "medical" },
+    { "name": "my_schedule",      "schema": "public" }
+  ],
+
+  "expected": {
+    "patients@anon": 0,
+    "appointments@anon": 0,
+    "consultations@anon": 0,
+    "documents@anon": 0,
+    "messages@anon": 0,
+
+    "patients@patient": ">0",
+    "appointments@patient": ">0",
+    "consultations@patient": ">0",
+
+    "patients@practitioner": ">0",
+    "appointments@practitioner": ">0",
+    "consultations@practitioner": ">0",
+
+    "appointments@frontdesk": ">0",
+    "patients@frontdesk": ">0",
+    "consultations@frontdesk": 0
+  }
+}

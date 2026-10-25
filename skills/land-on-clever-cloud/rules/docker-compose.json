@@ -1,0 +1,29 @@
+{
+  "id": "docker-compose",
+  "name": "docker-compose",
+  "wave": 1,
+  "coverage": "full",
+  "priority": 40,
+  "corpus": ["https://github.com/dockersamples/example-voting-app", "https://github.com/docker/awesome-compose"],
+  "detect": [
+    {"path": "(^|/)(docker-)?compose(\\.[a-z0-9_-]+)?\\.ya?ml$", "content": "(?m)^services:", "strength": "strong", "signal": "compose file with services"},
+    {"path": "(^|/)docker-stack\\.ya?ml$", "strength": "weak", "signal": "docker-stack.yml (Swarm)"}
+  ],
+  "components": {
+    "one_service_one_component": true,
+    "built_service": "native runtime detected from the build context (Dockerfile only if no native runtime fits)",
+    "image_service": "matched against rules/_services.json images",
+    "unknown_image": {"target": "docker", "effort": "M", "detail": "third-party image with no add-on: Docker app (one container per app; persistence only through add-ons/Cellar)"},
+    "profiles_only": {"target": "drop", "effort": "none", "detail": "service behind a compose profile (not started by default): run it once by hand or as a Clever Task if needed"},
+    "no_ports_custom": "background process: needs an HTTP listener on 8080 to be its own app, or CC_WORKER_COMMAND on an app of the same runtime",
+    "cke_threshold": 4
+  },
+  "traps": [
+    "Compose service names used as hostnames (redis, db) do not resolve on Clever: read the add-on variables instead.",
+    "depends_on ordering does not exist: each app must retry its connections at start.",
+    "Bind mounts (./src:/app) are local dev live-reload: ignore them; named volumes of a database vanish into the add-on.",
+    "Port mappings (8080:80) are irrelevant: the app listens on $PORT (8080).",
+    "Hard-coded credentials in code (e.g. postgres/postgres) must become add-on variables; never copy them.",
+    "Clever Kubernetes only when more than ~3 custom containers must stay containers together, and never in an HDS zone."
+  ]
+}

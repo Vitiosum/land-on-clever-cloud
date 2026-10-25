@@ -1,0 +1,41 @@
+{
+  "id": "railway",
+  "name": "Railway",
+  "wave": 2,
+  "coverage": "detect-only",
+  "priority": 45,
+  "corpus": [
+    "https://github.com/musonza/chat-demo",
+    "https://github.com/railwayapp-templates/strapi"
+  ],
+  "detect": [
+    {
+      "code": "\\bDATABASE_PUBLIC_URL\\b",
+      "strength": "weak",
+      "signal": "DATABASE_PUBLIC_URL (a Railway Postgres variable)"
+    },
+    {
+      "path": "(^|/)railway\\.(toml|json)$",
+      "strength": "strong",
+      "signal": "railway.toml/json"
+    },
+    {
+      "path": "(^|/)nixpacks\\.toml$",
+      "strength": "weak",
+      "signal": "nixpacks.toml"
+    },
+    {
+      "code": "railway\\.(app|com)/(new|deploy|template)",
+      "strength": "weak",
+      "signal": "Deploy on Railway button"
+    },
+    {
+      "code": "\\bRAILWAY_[A-Z_]+",
+      "strength": "weak",
+      "signal": "RAILWAY_* variables"
+    }
+  ],
+  "min_weak": 2,
+  "not_covered_note": "Native runtime + add-ons; volumes → FS Bucket/Cellar; migrations in the start command → hook. Mapping not written yet.",
+  "traps": []
+}

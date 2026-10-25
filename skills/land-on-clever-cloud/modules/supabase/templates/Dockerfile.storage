@@ -1,0 +1,51 @@
+# ---------------------------------------------------------------------------
+# Supabase Storage API on Clever Cloud, backed by Cellar.
+#
+# Deploy only if the Supabase Storage API is really needed:
+# buckets with RLS policies, home-made signed URLs, TUS uploads. If the application
+# can talk S3 directly, **Cellar alone is enough** and this container goes away.
+# It is almost always the best trade-off: one container less to
+# operate, and Cellar is native.
+#
+# PREREQUISITE: role `supabase_storage_admin`, which the managed PostgreSQL add-on
+# does not allow creating. See modules/supabase/reference/clever-cloud.md §0.
+# ---------------------------------------------------------------------------
+# Tag noted on 2026-10-24. Check it again before deploying:
+#   curl -s https://api.github.com/repos/supabase/storage/releases/latest | jq -r .tag_name
+# Never go with `latest` in production.
+FROM supabase/storage-api:v1.84.23
+
+# Set CC_DOCKER_EXPOSED_HTTP_PORT=5000 on the application.
+EXPOSE 5000
+
+# Variables (production set of the official docker-compose):
+#   DATABASE_URL       connection as supabase_storage_admin
+#   AUTH_JWT_SECRET    THE SAME as GoTrue, PostgREST and Realtime
+#   ANON_KEY           JWT of the anon role
+#   SERVICE_KEY        JWT of the service_role role
+#   POSTGREST_URL      internal URL of PostgREST
+#
+# BACKEND — the trap:
+#   The `file` backend relies on extended attributes (xattr). It does
+#   not suit Clever Cloud: the local disk of instances is LOST at
+#   every redeploy, and FS Buckets are not reachable from
+#   Docker. Always use the S3 backend to Cellar:
+#
+#   STORAGE_BACKEND=s3
+#   GLOBAL_S3_ENDPOINT=https://$CELLAR_ADDON_HOST   <- add https:// yourself,
+#                                                      CELLAR_ADDON_HOST is a
+#                                                      BARE host name
+#   AWS_ACCESS_KEY_ID=$CELLAR_ADDON_KEY_ID
+#   AWS_SECRET_ACCESS_KEY=$CELLAR_ADDON_KEY_SECRET
+#   GLOBAL_S3_FORCE_PATH_STYLE=true
+#
+# CELLAR ISOLATION: one key gives access to ALL the buckets of the add-on.
+# A second add-on is used to give a RESTRICTED access (e.g. read-only) through
+# a bucket policy whose Principal is its ADDON ID; it does not restrict
+# the keys of the first one.
+#
+# KEYS: ANON_KEY / SERVICE_KEY are legacy JWTs, which Supabase deprecates
+# by the end of 2026 (sb_publishable_ / sb_secret_ keys instead).
+#
+# Start: path checked in the upstream Dockerfile (v1.84.23).
+CMD ["node", "dist/start/server.js"]

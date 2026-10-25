@@ -1,0 +1,48 @@
+# ---------------------------------------------------------------------------
+# PostgREST on Clever Cloud (Docker runtime).
+#
+# PREREQUISITE — to settle BEFORE using this template:
+# PostgREST requires the roles `authenticator`, `anon`, `authenticated` and
+# `service_role`, with `grant anon to authenticator` (etc.). The MANAGED
+# PostgreSQL add-on of Clever Cloud does not allow creating them by default:
+# it is a request to support, to get IN WRITING before planning.
+# So this Dockerfile only applies if support has opened role creation,
+# or if the database is on CKE (non-HDS track only: beta, no HDS zone). See modules/supabase/reference/clever-cloud.md §0.
+#
+# Platform constraints:
+#   - CMD is the ONLY required instruction; CC_RUN_COMMAND has no effect.
+#   - one application = one container, Docker Compose is not supported.
+#   - the listening port is declared with CC_DOCKER_EXPOSED_HTTP_PORT.
+# ---------------------------------------------------------------------------
+# Tag noted on 2026-10-24. Check it again before deploying:
+#   curl -s https://api.github.com/repos/PostgREST/postgrest/releases/latest | jq -r .tag_name
+# Never go with `latest` in production.
+FROM postgrest/postgrest:v16.5
+
+# PostgREST listens on 3000. Set CC_DOCKER_EXPOSED_HTTP_PORT=3000 in
+# the environment variables of the Clever Cloud application.
+EXPOSE 3000
+
+# Variables to set on the application, one at a time:
+#   clever env set NAME "$VALUE" --alias ALIAS >/dev/null
+# (never `clever env import`, which erases the others; never `import-vars`,
+# broken in clever-tools 5.2.0)
+#
+#   PGRST_DB_URI          postgres://authenticator:...@HOST:PORT/DATABASE
+#                         Build it from POSTGRESQL_ADDON_* of the linked add-on,
+#                         replacing the user with `authenticator`.
+#   PGRST_DB_SCHEMAS      exposed schemas, comma-separated.
+#                         Each one must have USAGE granted to ALL active roles.
+#   PGRST_DB_ANON_ROLE    anon
+#   PGRST_JWT_SECRET      THE SAME as GoTrue, Storage and Realtime. It is the
+#                         cross-cutting trap of self-hosting Supabase.
+#   PGRST_DB_POOL         see below.
+#
+# SIZING — the rule that breaks first:
+#   PGRST_DB_POOL x max number of instances <= max connections of the add-on.
+#   Figure per plan: clever addon providers show postgresql-addon
+#   (dev 5, xxs 45, xs 75, s 125, m 250…).
+#
+# The official image already defines its entrypoint. It is restated explicitly
+# because the platform requires a CMD.
+CMD ["postgrest"]

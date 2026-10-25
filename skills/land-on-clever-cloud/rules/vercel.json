@@ -1,0 +1,195 @@
+{
+  "id": "vercel",
+  "name": "Vercel",
+  "wave": 1,
+  "coverage": "full",
+  "priority": 50,
+  "corpus": [
+    "https://github.com/vercel/chatbot",
+    "https://github.com/vercel/examples (solutions/cron)"
+  ],
+  "detect": [
+    {
+      "path": "(^|/)vercel\\.json$",
+      "strength": "strong",
+      "signal": "vercel.json"
+    },
+    {
+      "dep": "@vercel/blob",
+      "strength": "strong"
+    },
+    {
+      "dep": "@vercel/kv",
+      "strength": "strong"
+    },
+    {
+      "dep": "@vercel/postgres",
+      "strength": "strong"
+    },
+    {
+      "dep": "@vercel/functions",
+      "strength": "strong"
+    },
+    {
+      "dep": "@vercel/edge-config",
+      "strength": "strong"
+    },
+    {
+      "dep": "@vercel/analytics",
+      "strength": "weak"
+    },
+    {
+      "dep": "@vercel/otel",
+      "strength": "weak"
+    },
+    {
+      "code": "POSTGRES_PRISMA_URL|POSTGRES_URL_NON_POOLING|KV_REST_API_URL|BLOB_READ_WRITE_TOKEN|\\bVERCEL_URL\\b|AI_GATEWAY_API_KEY",
+      "strength": "strong",
+      "signal": "Vercel integration variable names"
+    },
+    {
+      "code": "vercel\\.com/new/clone",
+      "strength": "weak",
+      "signal": "README 'Deploy with Vercel' button"
+    },
+    {
+      "path": "(^|/)\\.gitignore$",
+      "content": "(?m)^/?\\.vercel/?$",
+      "strength": "weak",
+      "signal": ".vercel in .gitignore"
+    }
+  ],
+  "components": {
+    "dep_map": {
+      "@vercel/blob": {
+        "target": "rewrite",
+        "effort": "M",
+        "service": "s3",
+        "component_id": "blob-storage",
+        "create_addon": true,
+        "detail": "Cellar (S3 API) replaces Vercel Blob: server-side upload, delivery route, same keys",
+        "bucket_var": "CELLAR_BUCKET",
+        "client": "@aws-sdk/client-s3 with endpoint https://$CELLAR_ADDON_HOST, region us-east-1, forcePathStyle: true, credentials CELLAR_ADDON_KEY_ID / CELLAR_ADDON_KEY_SECRET, bucket $CELLAR_BUCKET",
+        "symbols": [
+          {
+            "id": "handleUpload",
+            "effort": "M",
+            "short": "client-token upload (handleUpload) → server upload route: authenticate, check type/size on the bytes, PutObject to Cellar",
+            "what": "the browser gets an upload token from this route and sends the file to Vercel: replace by a server route that authenticates the user first, receives the file (multipart/FormData), checks the real type and size on the bytes, and writes it with PutObject to Cellar (same key scheme); give PutObject a Buffer (await file.arrayBuffer()) or a ContentLength, never a stream of unknown length (fails with MissingContentLength); the SDK default checksums work on Cellar, no requestChecksumCalculation setting needed (verified 2026-10-25, @aws-sdk/client-s3 3.1156.0)",
+            "names": [
+              "handleUpload"
+            ]
+          },
+          {
+            "id": "client-upload",
+            "effort": "S",
+            "short": "uploader → POST the file (FormData) to the new upload route",
+            "what": "the uploader calls @vercel/blob/client upload(): POST the file as FormData to the new server upload route instead",
+            "names": [
+              "upload"
+            ]
+          },
+          {
+            "id": "get",
+            "effort": "S",
+            "short": "delivery → GetObject from Cellar, stream with nosniff + CSP sandbox, inline only png/jpeg/webp/gif",
+            "what": "the delivery route reads the blob: read it with GetObject from Cellar and stream it with X-Content-Type-Options: nosniff and Content-Security-Policy: default-src 'none'; sandbox; inline only for png/jpeg/webp/gif, otherwise attachment + application/octet-stream; authenticate first",
+            "names": [
+              "get",
+              "head"
+            ]
+          },
+          {
+            "id": "put",
+            "effort": "S",
+            "short": "put() → PutObject to Cellar (same key)",
+            "what": "server-side write: PutObject to Cellar with the same key (no random suffix unless the code relied on it)",
+            "names": [
+              "put"
+            ]
+          },
+          {
+            "id": "list-del",
+            "effort": "S",
+            "short": "list/del/copy → ListObjectsV2 / DeleteObject / CopyObject",
+            "what": "listing or deletion: ListObjectsV2 / DeleteObject / CopyObject on Cellar",
+            "names": [
+              "list",
+              "del",
+              "copy"
+            ]
+          }
+        ],
+        "package_change": "package.json: replace @vercel/blob by @aws-sdk/client-s3@3.1156.0 (latest stable on npm, published 2026-10-22, read 2026-10-25: re-check with npm view @aws-sdk/client-s3 version) and commit the lockfile",
+        "migration": "existing blobs: list them with the Vercel token kept in a 600 file (never printed), then scripts/migrate-files.py --source <listing> --bucket <prefix>-files --create-bucket (keys kept, SHA-256 verified)",
+        "client_package": {
+          "name": "@aws-sdk/client-s3",
+          "version": "3.1156.0",
+          "published": "2026-10-22",
+          "read_on": "2026-10-25",
+          "recheck": "npm view @aws-sdk/client-s3 version"
+        },
+        "shared_client": {
+          "file": "lib/cellar.ts",
+          "short": "new: one shared S3Client (endpoint https://$CELLAR_ADDON_HOST, region us-east-1, forcePathStyle, CELLAR_ADDON_KEY_ID/SECRET) + the bucket name, used by the routes",
+          "what": "create one module that builds the S3Client from CELLAR_ADDON_HOST / CELLAR_ADDON_KEY_ID / CELLAR_ADDON_KEY_SECRET (endpoint https://$CELLAR_ADDON_HOST, region us-east-1, forcePathStyle: true) and exports CELLAR_BUCKET; every route imports it"
+        },
+        "kept": {
+          "vercel.json": "ignored by Clever (harmless); delete it when you leave Vercel",
+          "next_config_hosts": "images host *.vercel-storage.com: harmless (files now come from the app's own route); remove after the migration"
+        },
+        "open_risk": "OPEN RISK: the source has NO auth mechanism, so upload and delivery stay anonymous as on Vercel (kept, not fixed by this POC) — next step: an upload secret checked by the route, or an auth library"
+      },
+      "@vercel/kv": {
+        "target": "addon",
+        "effort": "S",
+        "service": "redis",
+        "detail": "Redis add-on with ioredis/redis (KV is a Redis REST wrapper)"
+      },
+      "@vercel/postgres": {
+        "target": "addon",
+        "effort": "S",
+        "service": "postgresql",
+        "detail": "PostgreSQL add-on with pg/postgres.js"
+      },
+      "@vercel/edge-config": {
+        "target": "rewrite",
+        "effort": "S",
+        "detail": "environment variables or a small table"
+      },
+      "@vercel/functions": {
+        "target": "rewrite",
+        "effort": "S",
+        "detail": "waitUntil/geolocation helpers: plain async code on a long-lived server"
+      },
+      "@vercel/analytics": {
+        "target": "keep-saas",
+        "effort": "none",
+        "detail": "Vercel SaaS: keep or drop"
+      },
+      "@vercel/otel": {
+        "target": "native",
+        "effort": "S",
+        "detail": "OpenTelemetry works; point the exporter to your collector"
+      }
+    },
+    "vercel_json": {
+      "crons": {
+        "target": "native",
+        "effort": "S",
+        "detail": "clevercloud/cron.json + a job script; jobs run with an EMPTY environment: CC_PRE_RUN_HOOK writes the needed variables to a 600 file the job sources"
+      }
+    }
+  },
+  "traps": [
+    "The runtime runs npm install but NOT the build: CC_POST_BUILD_HOOK=\"npm run build\" (pnpm/yarn equivalent).",
+    "No NODE_ENV=production before the build: it drops devDependencies the build needs.",
+    "NEXT_PUBLIC_* / VITE_* are inlined at build: set them before the first build; prove them with prove.sh --asset-expect.",
+    "VERCEL_URL is undefined on Clever: use your own variable with the app's domain.",
+    "Next.js 16 renamed middleware.ts to proxy.ts: it runs inside next start, nothing to port.",
+    "A next build that is Killed needs a bigger build flavor (M by default here), not a bigger instance.",
+    "Cron jobs (clevercloud/cron.json) run with an EMPTY environment: no app variables, no INSTANCE_NUMBER, no PORT. CC_PRE_RUN_HOOK writes the needed ones to a 600 git-ignored file that the job script sources (see reference/runtimes-hooks.md).",
+    "Vercel Blob tokens (BLOB_READ_WRITE_TOKEN) are secrets: keep them in a 600 file, never in chat, never on a command line.",
+    "All Vercel reads go through scripts/source-vercel.sh (names, one secret into a 600 file, blob listing): never run `vercel env ls` (prints truncated value prefixes) nor `vercel env pull` (writes ALL variables) yourself."
+  ]
+}

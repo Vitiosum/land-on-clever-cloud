@@ -1,0 +1,39 @@
+{
+  "id": "netlify",
+  "name": "Netlify",
+  "wave": 2,
+  "coverage": "detect-only",
+  "priority": 40,
+  "corpus": [
+    "https://github.com/netlify-templates/next-platform-starter",
+    "https://github.com/netlify-templates/nuxt-toolbox"
+  ],
+  "detect": [
+    {
+      "path": "(^|/)netlify\\.toml$",
+      "strength": "strong",
+      "signal": "netlify.toml"
+    },
+    {
+      "path": "^netlify/(functions|edge-functions)/",
+      "strength": "strong",
+      "signal": "netlify/functions or edge-functions"
+    },
+    {
+      "dep": "@netlify/blobs",
+      "strength": "strong"
+    },
+    {
+      "dep": "@netlify/functions",
+      "strength": "strong"
+    },
+    {
+      "path": "(^|/)_redirects$",
+      "strength": "weak",
+      "signal": "_redirects"
+    }
+  ],
+  "min_weak": 2,
+  "not_covered_note": "Front usually lands natively (Node or Static); Netlify Blobs → Cellar, edge functions (Deno) → rewrite, redirects → Caddyfile. Mapping not written yet.",
+  "traps": []
+}

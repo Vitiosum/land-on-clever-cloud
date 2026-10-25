@@ -1,0 +1,34 @@
+{
+  "id": "cloudflare",
+  "name": "Cloudflare Workers / Pages",
+  "wave": 3,
+  "coverage": "detect-only",
+  "priority": 70,
+  "corpus": [
+    "https://github.com/cloudflare/d1-northwind",
+    "https://github.com/cloudflare/templates"
+  ],
+  "detect": [
+    {
+      "path": "(^|/)wrangler\\.(toml|json|jsonc)$",
+      "strength": "strong",
+      "signal": "wrangler config"
+    },
+    {
+      "path": "(^|/)worker-configuration\\.d\\.ts$",
+      "strength": "strong",
+      "signal": "worker-configuration.d.ts"
+    },
+    {
+      "dep": "wrangler",
+      "strength": "weak"
+    },
+    {
+      "dep": "@cloudflare/workers-types",
+      "strength": "weak"
+    }
+  ],
+  "min_weak": 2,
+  "not_covered_note": "Honest verdict: fetch-style code runs on Node with an adapter; D1/KV/R2/Queues are rewrites; Durable Objects and service bindings are not portable.",
+  "traps": []
+}

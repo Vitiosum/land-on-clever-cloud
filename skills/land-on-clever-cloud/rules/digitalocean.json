@@ -1,0 +1,21 @@
+{
+  "id": "digitalocean",
+  "name": "DigitalOcean App Platform",
+  "wave": 3,
+  "coverage": "detect-only",
+  "priority": 50,
+  "corpus": [
+    "https://github.com/digitalocean/sample-laravel",
+    "https://github.com/digitalocean/sample-nextjs"
+  ],
+  "detect": [
+    {
+      "path": "^\\.do/(app|deploy\\.template)\\.ya?ml$",
+      "strength": "strong",
+      "signal": ".do/app.yaml"
+    }
+  ],
+  "min_weak": 2,
+  "not_covered_note": "app.yaml maps closely (services → apps, PRE_DEPLOY job → hook); watch for secrets committed in .do/app.yaml. Mapping not written yet.",
+  "traps": []
+}

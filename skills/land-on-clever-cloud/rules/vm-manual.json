@@ -1,0 +1,46 @@
+{
+  "id": "vm-manual",
+  "name": "VM by hand (nginx, systemd, supervisor)",
+  "wave": 2,
+  "coverage": "full",
+  "priority": 20,
+  "corpus": [
+    "https://github.com/miguelgrinberg/microblog",
+    "https://github.com/GoogleCloudPlatform/getting-started-python (gce)"
+  ],
+  "detect": [
+    {
+      "path": "(^|/)Vagrantfile$",
+      "strength": "strong",
+      "signal": "Vagrantfile"
+    },
+    {
+      "path": "(^|/)(deployment|deploy|etc)/.*(nginx|supervisor|systemd)",
+      "strength": "strong",
+      "signal": "deployment configs"
+    },
+    {
+      "path": "\\.service$",
+      "strength": "weak",
+      "signal": "systemd unit"
+    },
+    {
+      "path": "(^|/)(supervisord?|.*supervisor.*)\\.conf$",
+      "strength": "weak",
+      "signal": "supervisor conf"
+    },
+    {
+      "path": "(^|/)ecosystem\\.config\\.(js|cjs)$",
+      "strength": "weak",
+      "signal": "pm2 ecosystem"
+    },
+    {
+      "path": "(^|/)(startup-script|provision|boot)\\.sh$",
+      "strength": "weak",
+      "signal": "boot/provision script"
+    }
+  ],
+  "min_weak": 2,
+  "not_covered_note": "Native runtime + add-ons in most cases; SQLite/local files → PostgreSQL or Cellar; system cron → cron.json. Mapping not written yet.",
+  "traps": []
+}

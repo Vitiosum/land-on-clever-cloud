@@ -1,0 +1,31 @@
+{
+  "_doc": "FALLBACK snapshot only. plan.py and provision.sh read regions live with `clever addon providers show <id> --format json`; this file is used when the CLI cannot answer, and every use is labelled 'snapshot 2026-10-24' in the output.",
+  "snapshot_date": "2026-10-24",
+  "snapshot_source": "clever addon providers show <id> --format json (clever-tools 5.2.0), 17 providers",
+  "app_zones": ["par", "parhds", "grahds", "rbx", "rbxhds", "scw", "ldn", "mtl", "sgp", "syd", "wsw"],
+  "hds_zones": ["parhds", "rbxhds", "grahds"],
+  "paris_first": {"non_hds": "par", "hds": "parhds", "motivated_alternatives": ["rbxhds", "grahds"]},
+  "providers": {
+    "azimutt": ["par"],
+    "cellar-addon": ["fr-north-hds", "par", "parhds", "rbxhds"],
+    "config-provider": ["par", "parhds"],
+    "es-addon": ["grahds", "ldn", "mtl", "par", "parhds", "rbx", "rbxhds", "scw", "sgp", "syd", "wsw"],
+    "fs-bucket": ["ldn", "mtl", "par", "rbx", "scw", "sgp", "syd", "wsw"],
+    "jenkins": ["grahds", "ldn", "par", "rbxhds", "scw"],
+    "keycloak": ["mtl", "par", "rbx", "scw", "sgp", "syd", "wsw"],
+    "kv": ["par"],
+    "mailpace": ["par"],
+    "addon-matomo": ["mtl", "par", "rbx", "scw", "sgp", "syd", "wsw"],
+    "metabase": ["fr-north-hds", "grahds", "mtl", "par", "rbx", "rbxhds", "scw", "sgp", "syd", "wsw"],
+    "mongodb-addon": ["ldn", "mtl", "par", "rbx", "scw", "sgp", "syd", "wsw"],
+    "mysql-addon": ["grahds", "ldn", "mtl", "par", "parhds", "rbx", "rbxhds", "scw", "sgp", "syd", "wsw"],
+    "otoroshi": ["fr-north-hds", "grahds", "mtl", "par", "rbx", "rbxhds", "scw", "sgp", "syd", "wsw"],
+    "postgresql-addon": ["grahds", "ldn", "mtl", "par", "parhds", "rbx", "rbxhds", "scw", "sgp", "syd", "wsw"],
+    "addon-pulsar": ["par", "parhds"],
+    "redis-addon": ["grahds", "ldn", "mtl", "par", "parhds", "rbx", "rbxhds", "scw", "sgp", "syd", "wsw"]
+  },
+  "non_addon_services": {
+    "kubernetes": {"never_in": ["parhds", "rbxhds", "grahds"], "note": "Clever Kubernetes (CKE) is never available in an HDS zone (FAITS-VERIFIES 2026-10-24); BETA in clever-tools 5.2.0"}
+  },
+  "price_grid_note": "On 2026-10-24 the public grid returned identical runtime prices for zone_id=par and zone_id=parhds; any HDS-specific cost is in the HDS contract, not in this grid."
+}

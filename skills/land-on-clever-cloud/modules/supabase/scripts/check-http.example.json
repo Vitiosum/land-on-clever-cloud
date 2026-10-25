@@ -1,0 +1,32 @@
+{
+  "_readme": [
+    "Copy to check-http.json and adapt it to the target API. It holds no secret: tokens come from a variable (token_env) or from a command (token_cmd) that forges them with the application's secret, like generate_link in GoTrue.",
+    "token_cmd below uses modules/supabase/templates/auth-nextjs/scripts/forge-token.mjs, copied into the application as scripts/forge-token.mjs. Relative paths resolve from the folder of THIS file.",
+    "Placeholders in paths, bodies and headers: {token} (current identity), {token:name}, {id:name}.",
+    "matrix[].count: 'header:X-Total-Count' (server-side count, preferred), 'json' (length of the list), 'json:<key>'.",
+    "matrix[].owner: column that holds the owner's id; adds the row <resource>#others (other users' rows that are visible, expected 0).",
+    "Expected: 0, '>0', '*', a number (frozen corpus); status: one code or a list of codes.",
+    "Write checks run ONLY on the target. --read-only replays the matrix only."
+  ],
+  "url": "https://app-xxxxxxxx.cleverapps.io",
+  "identities": {
+    "alice": { "id": "00000000-0000-0000-0000-00000000000a", "token_cmd": "node scripts/forge-token.mjs 00000000-0000-0000-0000-00000000000a", "headers": { "Cookie": "sid={token}" } },
+    "bob":   { "id": "00000000-0000-0000-0000-00000000000b", "token_env": "TOKEN_BOB", "headers": { "Cookie": "sid={token}" } }
+  },
+  "matrix": [
+    { "name": "todos", "path": "/api/todos", "count": "header:X-Total-Count", "owner": "user_id" }
+  ],
+  "expected": {
+    "todos@anon": 0,
+    "todos@alice": ">0",
+    "todos@bob": ">0",
+    "todos#others@alice": 0,
+    "todos#others@bob": 0
+  },
+  "checks": [
+    { "name": "alice updates a row of bob -> 404", "identity": "alice", "method": "PATCH", "path": "/api/todos/<id of a row of bob>", "body": { "is_complete": true }, "status": 404 },
+    { "name": "alice writes as bob -> 403", "identity": "alice", "method": "POST", "path": "/api/todos", "body": { "task": "intrusion", "user_id": "{id:bob}" }, "status": [403, 400] },
+    { "name": "anonymous writes -> 401", "method": "POST", "path": "/api/todos", "body": { "task": "anonymous" }, "status": 401 },
+    { "name": "tampered token -> treated as anonymous", "resource": "todos", "headers": { "Cookie": "sid={token:alice}xx" }, "count": 0 }
+  ]
+}

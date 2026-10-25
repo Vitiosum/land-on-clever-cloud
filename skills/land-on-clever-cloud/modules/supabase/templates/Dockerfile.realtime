@@ -1,0 +1,47 @@
+# ---------------------------------------------------------------------------
+# Supabase Realtime on Clever Cloud (Docker runtime).
+#
+# READ BEFORE DEPLOYING — it is the item most often underestimated.
+#
+# 1. Postgres Changes requires logical decoding: wal_level=logical, at least
+#    one replication slot, a publication, and a superuser role or one with
+#    the REPLICATION privilege. The MANAGED PostgreSQL add-on of Clever Cloud
+#    documents neither wal_level, nor slot, nor logical decoding: its only
+#    documented replication is PHYSICAL. Postgres Changes is therefore out
+#    of reach on the managed add-on. See modules/supabase/reference/clever-cloud.md §0.
+#
+# 2. Realtime is MULTI-TENANT. The socket resolves the tenant from the
+#    subdomain of the URL, and the connection fails if no matching tenant
+#    exists. NO channel works until a tenant is
+#    created. When self-hosting, SEED_SELF_HOST=true runs the seed
+#    script at start. It is the number 1 cause of "Realtime does not work" after
+#    a migration: the service runs, the logs are clean, and nothing goes through.
+#
+# 3. Broadcast and Presence do not depend on logical decoding. If only
+#    those are used, the constraint of point 1 goes away — check it in
+#    the survey before giving up on Realtime or switching to CKE (outside HDS).
+# ---------------------------------------------------------------------------
+# Tag noted on 2026-10-24. Check it again before deploying:
+#   curl -s https://api.github.com/repos/supabase/realtime/releases/latest | jq -r .tag_name
+# Never go with `latest` in production.
+FROM supabase/realtime:v2.147.3
+
+# Set CC_DOCKER_EXPOSED_HTTP_PORT=4000 on the application.
+EXPOSE 4000
+
+# Main variables:
+#   DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+#   DB_ENC_KEY               encryption of tenant data
+#   API_JWT_SECRET           token of the administration API
+#   SECRET_KEY_BASE          Phoenix secret
+#   SEED_SELF_HOST=true      creates the tenant at start — without it, nothing goes through
+#   SLOT_NAME, PUBLICATIONS  only for Postgres Changes
+#
+# The jwt_secret of the TENANT (seeded via SEED_SELF_HOST) is the one that
+# clients present: it is the same JWT_SECRET as GoTrue and PostgREST.
+# API_JWT_SECRET only serves the administration API.
+#
+# Start: the upstream image defines ENTRYPOINT [tini … /app/run.sh] and
+# CMD ["/app/bin/server"]. The entrypoint is inherited; the CMD is restated
+# explicitly (checked in the upstream Dockerfile, tag v2.147.3).
+CMD ["/app/bin/server"]

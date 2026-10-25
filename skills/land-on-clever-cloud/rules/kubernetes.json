@@ -1,0 +1,38 @@
+{
+  "id": "kubernetes",
+  "name": "Kubernetes",
+  "wave": 2,
+  "coverage": "detect-only",
+  "priority": 30,
+  "corpus": [
+    "https://github.com/stefanprodan/podinfo",
+    "https://github.com/argoproj/argocd-example-apps"
+  ],
+  "detect": [
+    {
+      "path": "(^|/)Chart\\.yaml$",
+      "strength": "strong",
+      "signal": "Helm chart"
+    },
+    {
+      "path": "(^|/)kustomization\\.ya?ml$",
+      "strength": "strong",
+      "signal": "kustomization"
+    },
+    {
+      "path": "(^|/)skaffold\\.ya?ml$",
+      "strength": "strong",
+      "signal": "skaffold.yaml"
+    },
+    {
+      "path": "\\.ya?ml$",
+      "content": "(?m)^kind:\\s*(Deployment|StatefulSet|CronJob|Ingress)\\s*$",
+      "strength": "weak",
+      "signal": "Kubernetes manifests",
+      "strong_if_count": 3
+    }
+  ],
+  "min_weak": 2,
+  "not_covered_note": "Usually reduces to native apps + add-ons; Clever Kubernetes (BETA, never in HDS) only for real k8s workloads. Mapping not written yet.",
+  "traps": []
+}

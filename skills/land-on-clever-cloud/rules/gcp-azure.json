@@ -1,0 +1,47 @@
+{
+  "id": "gcp-azure",
+  "name": "Google App Engine / Cloud Run / Azure App Service",
+  "wave": 3,
+  "coverage": "detect-only",
+  "priority": 35,
+  "corpus": [
+    "https://github.com/GoogleCloudPlatform/getting-started-python (bookshelf)",
+    "https://github.com/Azure-Samples/msdocs-flask-postgresql-sample-app"
+  ],
+  "detect": [
+    {
+      "path": "(^|/)app\\.ya?ml$",
+      "content": "(?m)^runtime:\\s*\\w+",
+      "strength": "strong",
+      "signal": "App Engine app.yaml"
+    },
+    {
+      "path": "(^|/)\\.gcloudignore$",
+      "strength": "weak",
+      "signal": ".gcloudignore"
+    },
+    {
+      "path": "(^|/)cloudbuild\\.ya?ml$",
+      "strength": "weak",
+      "signal": "cloudbuild.yaml"
+    },
+    {
+      "path": "(^|/)azure\\.yaml$",
+      "strength": "strong",
+      "signal": "azure.yaml (azd)"
+    },
+    {
+      "path": "(^|/)infra/.*\\.bicep$",
+      "strength": "strong",
+      "signal": "Bicep"
+    },
+    {
+      "code": "\\bAZURE_POSTGRESQL_[A-Z_]+|\\bK_SERVICE\\b|google\\.cloud\\.(firestore|storage)",
+      "strength": "weak",
+      "signal": "cloud SDK/variables"
+    }
+  ],
+  "min_weak": 2,
+  "not_covered_note": "Web part usually native; Firestore/Cloud Storage/Key Vault are rewrites or kept. Mapping not written yet.",
+  "traps": []
+}

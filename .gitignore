@@ -1,0 +1,22 @@
+# Deliverables and data of a landing or a migration: never in this repository
+.clever-landing/
+.clever.json
+survey*.json
+manifest*.json
+objects*.json
+check-*.json
+measures*.json
+.sessions.local.json
+*.sql
+*.dump
+.env
+.env.*
+!*.example.json
+pgpass*
+measures/
+
+# Tools
+__pycache__/
+*.pyc
+node_modules/
+.DS_Store

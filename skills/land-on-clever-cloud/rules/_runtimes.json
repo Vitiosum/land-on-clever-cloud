@@ -1,0 +1,108 @@
+{
+  "_doc": "Per-runtime facts used by plan.py. Versions were READ in the official runtime pages on 2026-10-24 (https://www.clever.cloud/developers/doc/deploy/applications/<runtime>/index.html.md) — re-read the page before relying on them; plan.py labels them [read doc 2026-10-24].",
+  "read_date": "2026-10-24",
+  "runtimes": {
+    "node": {
+      "clever_type": "node",
+      "doc": "https://www.clever.cloud/developers/doc/deploy/applications/nodejs/index.html.md",
+      "start": "package.json scripts.start or main; CC_RUN_COMMAND overrides",
+      "build_hook": "CC_POST_BUILD_HOOK=\"<pm> run build\" — the runtime runs install, NOT build",
+      "dev_deps": "CC_NODE_DEV_DEPENDENCIES=install when build tools sit in devDependencies",
+      "forbidden_before_build": {
+        "NODE_ENV": "production"
+      },
+      "version_pin": "engines.node (wins) or CC_NODE_VERSION; .nvmrc is ignored"
+    },
+    "python": {
+      "clever_type": "python",
+      "doc": "https://www.clever.cloud/developers/doc/deploy/applications/python/index.html.md",
+      "accepted_versions": [
+        "2",
+        "3",
+        "3.9",
+        "3.10",
+        "3.11",
+        "3.12",
+        "3.13",
+        "3.14"
+      ],
+      "eol": ["3.9"],
+      "uv": "native uv mode only when uv.lock is at the root AND CC_PYTHON_UV_RUN_COMMAND is set (no shell expansion; listen on 0.0.0.0:$PORT; CC_PYTHON_MODULE and CC_PYTHON_BACKEND ignored); otherwise legacy mode installs requirements.txt [read doc 2026-10-25]",
+      "celery": "CC_PYTHON_CELERY_MODULE, CC_PYTHON_CELERY_USE_BEAT=true, CC_PYTHON_CELERY_LOGFILE [read doc 2026-10-25]",
+      "version_var": "CC_PYTHON_VERSION",
+      "start": "CC_PYTHON_MODULE=\"module:app\" behind CC_PYTHON_BACKEND (daphne, gunicorn, uvicorn, uwsgi; default uwsgi). With CC_RUN_COMMAND the app must listen on 9000.",
+      "django": "CC_PYTHON_MANAGE_TASKS=\"migrate --no-input, collectstatic --noinput\" runs during the BUILD (legacy mode, not with uv.lock)",
+      "observed": [
+        "2026-10-25 (validation round 1): with CC_PYTHON_MODULE + CC_PYTHON_BACKEND=gunicorn, Clever binds gunicorn to 127.0.0.1:9000 behind nginx (public 8080), ignores `bind` from gunicorn.conf.py and starts 2 workers; worker_class from gunicorn.conf.py is applied",
+        "2026-10-25 (validation round 1): migrate in CC_PYTHON_MANAGE_TASKS reached the linked PostgreSQL add-on at build time ('Applying …' lines in the build log)"
+      ]
+    },
+    "dotnet": {
+      "clever_type": "dotnet",
+      "doc": "https://www.clever.cloud/developers/doc/deploy/applications/dotnet/index.html.md",
+      "accepted_versions": [
+        "6.0",
+        "8",
+        "9",
+        "10.0"
+      ],
+      "default_version": "8",
+      "version_var": "CC_DOTNET_VERSION",
+      "note": "non-LTS and older versions are not supported; ASPNETCORE_URLS=http://0.0.0.0:8080 is preset; CC_DOTNET_PROJ when several project files",
+      "observed": [
+        "2026-10-25: NuGet restore on Clever's .NET build VM fails with NU3018 'signing certificate is not trusted by the trust provider', reproduced 4/4 (SDK 8.0.132, the VM's code-signing trust chain; a local SDK 8.0.131 restores the same project fine) → DOTNET_NUGET_SIGNATURE_VERIFICATION=false set before the first build, kept until the platform is fixed (it disables NuGet signature verification on the build VM); NU3042 warnings are noise"
+      ]
+    },
+    "go": {
+      "clever_type": "go",
+      "doc": "https://www.clever.cloud/developers/doc/deploy/applications/golang/index.html.md",
+      "build": "CC_GO_BUILD_TOOL gomod (go.mod at the root: the module read from go.mod is passed to go install) | gobuild | makefile (CC_GO_BINARY); CC_GO_PKG = package path passed to go install, overrides the module — needed when main is not at the module root; listen on 0.0.0.0:8080 [read doc 2026-10-25]"
+    },
+    "php": {
+      "clever_type": "php",
+      "doc": "https://www.clever.cloud/developers/doc/deploy/applications/php/index.html.md",
+      "note": "CC_WEBROOT=/public for Laravel/Symfony (absolute from the project root; relative or '..' fails the deploy) [read doc 2026-10-25]",
+      "accepted_versions": ["5.6", "7.0", "7.1", "7.2", "7.3", "7.4", "8.0", "8.1", "8.2", "8.3", "8.4", "8.5"],
+      "eol": ["5.6", "7.0", "7.1", "7.2", "7.3", "7.4", "8.0", "8.1"],
+      "version_var": "CC_PHP_VERSION",
+      "default_version": "8 (8.5)",
+      "composer": "composer install at build when composer.json is at the root [read doc 2026-10-25]"
+    },
+    "ruby": {
+      "clever_type": "ruby",
+      "doc": "https://www.clever.cloud/developers/doc/deploy/applications/ruby/index.html.md"
+    },
+    "rust": {
+      "clever_type": "rust",
+      "doc": "https://www.clever.cloud/developers/doc/deploy/applications/rust/index.html.md"
+    },
+    "java": {
+      "clever_type": "maven",
+      "doc": "https://www.clever.cloud/developers/doc/deploy/applications/java/index.html.md",
+      "note": "gradle projects: --type gradle"
+    },
+    "elixir": {
+      "clever_type": "elixir"
+    },
+    "static": {
+      "clever_type": "static",
+      "note": "SPA fallback needs a Caddyfile; SWS caches js/css for a year",
+      "build": "CC_BUILD_COMMAND runs during the build if set; else auto-build of supported generators (Astro, Docusaurus, Nuxt, VitePress) into cc_static_autobuilt; CC_WEBROOT (default /); a root Caddyfile is used with Caddy. The page does not confirm that Node is available at build [read doc 2026-10-25]"
+    },
+    "docker": {
+      "clever_type": "docker",
+      "doc": "https://www.clever.cloud/developers/doc/deploy/applications/docker/index.html.md",
+      "note": "one container per app; CMD/ENTRYPOINT required; CC_RUN_COMMAND ignored; PORT=8080 imposed; no workers, cron or FS Bucket"
+    }
+  },
+  "platform": {
+    "hooks": "CC_PRE_BUILD_HOOK (before dependencies), CC_POST_BUILD_HOOK (after the build, before the cache), CC_PRE_RUN_HOOK (before the start, on EVERY deploy) — a failing one fails the deploy; CC_RUN_SUCCEEDED_HOOK / CC_RUN_FAILED_HOOK do not [read doc 2026-10-25]",
+    "workers_doc": "CC_WORKER_COMMAND, or CC_WORKER_COMMAND_0, _1…; CC_WORKER_RESTART always|on-failure (default)|no; not available for Docker apps [read doc 2026-10-25]",
+    "listen": "0.0.0.0:$PORT (8080); a service must listen on 8080 before any HTTP check, so a process with no HTTP server cannot be an app on its own as is",
+    "health_check": "default GET / and any 200-499 passes (a 400 page passes the deploy!); CC_HEALTH_CHECK_PATH makes it strict 2xx",
+    "workers": "CC_WORKER_COMMAND[_n] next to the web process on the same app (not with Docker)",
+    "cron": "clevercloud/cron.json: a JSON array of \"<cron expr> $ROOT/clevercloud/cron-job.sh METHOD /path\" ($ROOT is substituted); jobs run on EVERY instance with an EMPTY environment (no app variables, no INSTANCE_NUMBER, no PORT): templates/cron/cron-env.sh (CC_PRE_RUN_HOOK) writes them to a 600 git-ignored file, templates/cron/cron-job.sh sources it, runs on instance 0 only and sends the secret from a 600 header file; output in clever logs (CMD/CMDOUT/CMDEND); not with Docker",
+    "default_flavor": "nano",
+    "default_build_flavor": "M"
+  }
+}

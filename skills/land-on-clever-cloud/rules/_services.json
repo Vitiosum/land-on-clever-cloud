@@ -1,0 +1,426 @@
+{
+  "_doc": "Backing services: how a datastore/tool seen in a repo maps to a Clever Cloud add-on. Zone availability is NEVER taken from here: plan.py reads it live (clever addon providers show <id> --format json) and falls back to rules/_zones.json only when the CLI cannot answer, saying so. 'two_org' = boundary condition for the optional second, non-HDS organisation (internal presales doctrine, to be confirmed by Clever Cloud; never a compliance statement).",
+  "services": {
+    "postgresql": {
+      "provider": "postgresql-addon",
+      "price_source": "postgresql",
+      "default_plan": "xxs_tny",
+      "dedicated": true,
+      "encryption": true,
+      "images": [
+        "^postgres(:|$)",
+        "^postgis/",
+        "^bitnami/postgresql",
+        "^timescale/",
+        "^pgvector/"
+      ],
+      "code_hints": [
+        "postgres(ql)?://",
+        "\\bpsycopg",
+        "\\bNpgsql\\b",
+        "\\bpg\\b.*Pool",
+        "dj_database_url",
+        "\\bDATABASE_URL\\b",
+        "POSTGRES_URL"
+      ],
+      "env_hint": "POSTGRESQL_ADDON_HOST, _PORT, _DB, _USER, _PASSWORD, _URI (observed 2026-10-25)",
+      "conventions_doc": "a variable the app reads (left) and the Clever add-on variable it should fall back to (right): Clever does not inject the left one, and its variables cannot reference each other",
+      "conventions": {"DATABASE_URL": "POSTGRESQL_ADDON_URI", "POSTGRES_URL": "POSTGRESQL_ADDON_URI", "POSTGRESQL_URL": "POSTGRESQL_ADDON_URI", "POSTGRES_HOST": "POSTGRESQL_ADDON_HOST", "POSTGRES_SERVER": "POSTGRESQL_ADDON_HOST", "PGHOST": "POSTGRESQL_ADDON_HOST", "DB_HOST": "POSTGRESQL_ADDON_HOST", "DBHOST": "POSTGRESQL_ADDON_HOST", "AZURE_POSTGRESQL_HOST": "POSTGRESQL_ADDON_HOST", "POSTGRES_PORT": "POSTGRESQL_ADDON_PORT", "PGPORT": "POSTGRESQL_ADDON_PORT", "DB_PORT": "POSTGRESQL_ADDON_PORT", "POSTGRES_USER": "POSTGRESQL_ADDON_USER", "PGUSER": "POSTGRESQL_ADDON_USER", "DB_USERNAME": "POSTGRESQL_ADDON_USER", "DB_USER": "POSTGRESQL_ADDON_USER", "DBUSER": "POSTGRESQL_ADDON_USER", "AZURE_POSTGRESQL_USER": "POSTGRESQL_ADDON_USER", "POSTGRES_PASSWORD": "POSTGRESQL_ADDON_PASSWORD", "PGPASSWORD": "POSTGRESQL_ADDON_PASSWORD", "DB_PASSWORD": "POSTGRESQL_ADDON_PASSWORD", "DBPASS": "POSTGRESQL_ADDON_PASSWORD", "AZURE_POSTGRESQL_PASSWORD": "POSTGRESQL_ADDON_PASSWORD", "POSTGRES_DB": "POSTGRESQL_ADDON_DB", "PGDATABASE": "POSTGRESQL_ADDON_DB", "DB_DATABASE": "POSTGRESQL_ADDON_DB", "DB_NAME": "POSTGRESQL_ADDON_DB", "DBNAME": "POSTGRESQL_ADDON_DB", "AZURE_POSTGRESQL_DATABASE": "POSTGRESQL_ADDON_DB", "AZURE_POSTGRESQL_NAME": "POSTGRESQL_ADDON_DB"},
+      "compatible": [],
+      "label": "PostgreSQL add-on",
+      "env_vars": [
+        "POSTGRESQL_ADDON_HOST",
+        "POSTGRESQL_ADDON_PORT",
+        "POSTGRESQL_ADDON_DB",
+        "POSTGRESQL_ADDON_USER",
+        "POSTGRESQL_ADDON_PASSWORD",
+        "POSTGRESQL_ADDON_URI"
+      ],
+      "wiring": {
+        "dotnet:Npgsql": "Npgsql takes a key=value string, not a URI: Host=POSTGRESQL_ADDON_HOST;Port=POSTGRESQL_ADDON_PORT;Database=POSTGRESQL_ADDON_DB;Username=POSTGRESQL_ADDON_USER;Password=POSTGRESQL_ADDON_PASSWORD",
+        "python": "psycopg / dj-database-url: POSTGRESQL_ADDON_URI",
+        "node": "pg: new Pool({ connectionString: process.env.POSTGRESQL_ADDON_URI })",
+        "default": "POSTGRESQL_ADDON_URI (or _HOST, _PORT, _DB, _USER, _PASSWORD)"
+      }
+    },
+    "mysql": {
+      "provider": "mysql-addon",
+      "price_source": "mysql",
+      "default_plan": "xxs_sml",
+      "dedicated": true,
+      "encryption": true,
+      "images": [
+        "^mysql(:|$)",
+        "^mariadb(:|$)",
+        "^bitnami/mysql",
+        "^bitnami/mariadb"
+      ],
+      "code_hints": [
+        "mysql://",
+        "\\bmysql2\\b",
+        "pymysql",
+        "mysqlclient"
+      ],
+      "env_hint": "MYSQL_ADDON_URI",
+      "conventions_doc": "a variable the app reads (left) and the Clever add-on variable it should fall back to (right): Clever does not inject the left one, and its variables cannot reference each other",
+      "conventions_verified": false,
+      "conventions": {"DATABASE_URL": "MYSQL_ADDON_URI", "MYSQL_URL": "MYSQL_ADDON_URI", "DB_HOST": "MYSQL_ADDON_HOST", "MYSQL_HOST": "MYSQL_ADDON_HOST", "DB_PORT": "MYSQL_ADDON_PORT", "MYSQL_PORT": "MYSQL_ADDON_PORT", "DB_DATABASE": "MYSQL_ADDON_DB", "MYSQL_DATABASE": "MYSQL_ADDON_DB", "DB_USERNAME": "MYSQL_ADDON_USER", "MYSQL_USER": "MYSQL_ADDON_USER", "DB_PASSWORD": "MYSQL_ADDON_PASSWORD", "MYSQL_PASSWORD": "MYSQL_ADDON_PASSWORD"},
+      "compatible": [],
+      "label": "MySQL add-on"
+    },
+    "redis": {
+      "provider": "redis-addon",
+      "price_source": "redis",
+      "default_plan": "s_mono",
+      "dedicated": true,
+      "encryption": true,
+      "images": [
+        "^redis(:|$)",
+        "^valkey/",
+        "^bitnami/redis",
+        "^redis/redis-stack"
+      ],
+      "code_hints": [
+        "rediss?://",
+        "\\bREDIS_URL\\b",
+        "StackExchange\\.Redis",
+        "\\bioredis\\b",
+        "from redis import",
+        "\\bimport redis\\b"
+      ],
+      "env_hint": "REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_URL (observed 2026-10-25; the add-on requires the password)",
+      "conventions_doc": "a variable the app reads (left) and the Clever add-on variable it should fall back to (right): Clever does not inject the left one, and its variables cannot reference each other",
+      "conventions": {"REDIS_TLS_URL": "REDIS_URL"},
+      "compatible": ["REDIS_URL", "REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD"],
+      "label": "Redis add-on",
+      "env_vars": [
+        "REDIS_HOST",
+        "REDIS_PORT",
+        "REDIS_PASSWORD",
+        "REDIS_URL"
+      ],
+      "wiring": {
+        "dotnet:StackExchange.Redis": "StackExchange.Redis takes no redis:// URL: ConfigurationOptions with EndPoints = REDIS_HOST:REDIS_PORT and Password = REDIS_PASSWORD",
+        "python": "redis-py: Redis(host=REDIS_HOST, port=int(REDIS_PORT), password=REDIS_PASSWORD) or Redis.from_url(REDIS_URL)",
+        "node": "ioredis / node-redis: new Redis(process.env.REDIS_URL) / createClient({ url: process.env.REDIS_URL })",
+        "default": "REDIS_HOST, REDIS_PORT, REDIS_PASSWORD (or REDIS_URL)"
+      }
+    },
+    "mongodb": {
+      "provider": "mongodb-addon",
+      "price_source": "mongodb",
+      "default_plan": "xs_sml",
+      "dedicated": true,
+      "encryption": true,
+      "images": [
+        "^mongo(:|$)",
+        "^bitnami/mongodb"
+      ],
+      "code_hints": [
+        "mongodb(\\+srv)?://",
+        "\\bmongoose\\b",
+        "pymongo",
+        "MongoClient"
+      ],
+      "env_hint": "MONGODB_ADDON_URI",
+      "conventions_doc": "a variable the app reads (left) and the Clever add-on variable it should fall back to (right): Clever does not inject the left one, and its variables cannot reference each other",
+      "conventions_verified": false,
+      "conventions": {"MONGODB_URI": "MONGODB_ADDON_URI", "MONGO_URL": "MONGODB_ADDON_URI", "MONGO_URI": "MONGODB_ADDON_URI", "MONGODB_URL": "MONGODB_ADDON_URI"},
+      "compatible": [],
+      "label": "MongoDB add-on",
+      "fallback_absent": {
+        "target": "rewrite",
+        "effort": "L",
+        "detail": "no MongoDB in this zone: move the data model to PostgreSQL (JSONB) — a rewrite"
+      },
+      "two_org": null
+    },
+    "elasticsearch": {
+      "provider": "es-addon",
+      "price_source": "es",
+      "default_plan": "xs",
+      "dedicated": true,
+      "encryption": true,
+      "images": [
+        "^elasticsearch",
+        "^docker\\.elastic\\.co/elasticsearch",
+        "^opensearchproject/opensearch",
+        "^bitnami/elasticsearch"
+      ],
+      "code_hints": [
+        "@elastic/elasticsearch",
+        "elasticsearch-py",
+        "\\bElasticsearch\\("
+      ],
+      "env_hint": "ES_ADDON_*",
+      "conventions_doc": "a variable the app reads (left) and the Clever add-on variable it should fall back to (right): Clever does not inject the left one, and its variables cannot reference each other",
+      "conventions_verified": false,
+      "conventions": {"ELASTICSEARCH_URL": "ES_ADDON_URI"},
+      "compatible": [],
+      "label": "Elastic Stack add-on"
+    },
+    "s3": {
+      "provider": "cellar-addon",
+      "price_source": "cellar",
+      "default_plan": "S",
+      "dedicated": false,
+      "encryption": false,
+      "images": [
+        "^minio/minio",
+        "^bitnami/minio",
+        "^localstack/"
+      ],
+      "code_hints": [
+        "@aws-sdk/client-s3",
+        "\\bboto3\\b",
+        "S3_BUCKET",
+        "\\bs3\\.amazonaws\\.com"
+      ],
+      "env_hint": "CELLAR_ADDON_HOST (bare host, no scheme), CELLAR_ADDON_KEY_ID, CELLAR_ADDON_KEY_SECRET; the bucket is created by you, not by provisioning; SigV4 region us-east-1",
+      "label": "Cellar (S3) add-on",
+      "fallback_absent": {
+        "target": "addon",
+        "effort": "S",
+        "detail": "no Cellar in this zone: create Cellar in parhds (Paris first) or rbxhds, never outside HDS for health files"
+      },
+      "two_org": null
+    },
+    "fs": {
+      "provider": "fs-bucket",
+      "price_source": null,
+      "default_plan": "s",
+      "dedicated": false,
+      "encryption": false,
+      "images": [],
+      "code_hints": [],
+      "env_hint": "mounted path (relative, e.g. /data): test write → restart → read",
+      "label": "FS Bucket add-on",
+      "fallback_absent": {
+        "target": "addon",
+        "effort": "M",
+        "detail": "no FS Bucket in this zone: write files to Cellar (S3 API) — a code change"
+      },
+      "two_org": null
+    },
+    "keycloak": {
+      "provider": "keycloak",
+      "price_source": null,
+      "default_plan": "base",
+      "dedicated": true,
+      "encryption": false,
+      "images": [
+        "^quay\\.io/keycloak",
+        "^keycloak/",
+        "^jboss/keycloak",
+        "^bitnami/keycloak"
+      ],
+      "code_hints": [
+        "keycloak-js",
+        "python-keycloak"
+      ],
+      "env_hint": "",
+      "label": "Keycloak add-on",
+      "fallback_absent": {
+        "target": "rewrite",
+        "effort": "L",
+        "detail": "no Keycloak in this zone: authentication inside the app (in-app library), deployed in the HDS zone"
+      },
+      "two_org": {
+        "risk": "at-risk",
+        "boundary": "AT RISK: a user's identity in a health app can itself reveal health information. Only after WRITTEN validation by Clever Cloud's legal team and the customer's DPO; default = in-app authentication in the HDS zone."
+      }
+    },
+    "mail": {
+      "provider": "mailpace",
+      "price_source": null,
+      "default_plan": "clever_solo",
+      "dedicated": false,
+      "encryption": false,
+      "images": [
+        "^mailhog/",
+        "^axllent/mailpit"
+      ],
+      "code_hints": [
+        "nodemailer",
+        "@sendgrid/",
+        "postmark",
+        "\\bresend\\b",
+        "SMTP_HOST",
+        "EMAIL_HOST\\b"
+      ],
+      "env_hint": "",
+      "label": "MailPace add-on",
+      "image_target": {
+        "target": "drop",
+        "effort": "none",
+        "detail": "local mail catcher: not needed on Clever (use a transactional e-mail service)"
+      },
+      "fallback_absent": {
+        "target": "keep-saas",
+        "effort": "S",
+        "detail": "no MailPace in this zone: keep the current e-mail provider (check its own data terms)"
+      },
+      "two_org": {
+        "risk": "conditional",
+        "boundary": "no health content in e-mails: only a link back to the HDS app."
+      }
+    },
+    "matomo": {
+      "provider": "addon-matomo",
+      "price_source": null,
+      "default_plan": "beta",
+      "dedicated": false,
+      "encryption": false,
+      "images": [
+        "^matomo(:|$)",
+        "^bitnami/matomo"
+      ],
+      "code_hints": [
+        "matomo",
+        "piwik"
+      ],
+      "env_hint": "",
+      "label": "Matomo add-on",
+      "fallback_absent": {
+        "target": "drop",
+        "effort": "S",
+        "detail": "no Matomo in this zone: drop analytics or keep the current tool"
+      },
+      "two_org": {
+        "risk": "conditional",
+        "boundary": "no health data and no patient identifier in URLs, page titles or events; IP addresses anonymised."
+      }
+    },
+    "kv": {
+      "provider": "kv",
+      "price_source": null,
+      "default_plan": "base",
+      "dedicated": false,
+      "encryption": false,
+      "images": [],
+      "code_hints": [],
+      "env_hint": "",
+      "label": "Materia KV",
+      "fallback_absent": {
+        "target": "addon",
+        "effort": "S",
+        "detail": "no Materia KV in this zone: use the Redis add-on"
+      },
+      "two_org": {
+        "risk": "conditional",
+        "boundary": "no health data, not even cached."
+      }
+    },
+    "azimutt": {
+      "provider": "azimutt",
+      "price_source": null,
+      "default_plan": "free",
+      "dedicated": false,
+      "encryption": false,
+      "images": [],
+      "code_hints": [],
+      "env_hint": "",
+      "label": "Azimutt",
+      "fallback_absent": {
+        "target": "drop",
+        "effort": "none",
+        "detail": "internal tool, not needed for the app"
+      },
+      "two_org": {
+        "risk": "conditional",
+        "boundary": "internal tool: no health data, not even cached or in schema samples."
+      }
+    },
+    "metabase": {
+      "provider": "metabase",
+      "price_source": null,
+      "default_plan": "base",
+      "dedicated": true,
+      "encryption": false,
+      "images": [
+        "^metabase/"
+      ],
+      "code_hints": [],
+      "env_hint": "",
+      "label": "Metabase add-on",
+      "fallback_absent": {
+        "target": "docker",
+        "effort": "M",
+        "detail": "no Metabase add-on in this zone: Metabase as a Docker app in the same zone, or rbxhds (motivated alternative)"
+      },
+      "two_org": null
+    },
+    "pulsar": {
+      "provider": "addon-pulsar",
+      "price_source": null,
+      "default_plan": "beta",
+      "dedicated": false,
+      "encryption": false,
+      "images": [
+        "^apachepulsar/"
+      ],
+      "code_hints": [
+        "pulsar-client"
+      ],
+      "env_hint": "",
+      "label": "Pulsar add-on"
+    },
+    "queue": {
+      "provider": null,
+      "price_source": null,
+      "images": [
+        "^rabbitmq(:|$)",
+        "^bitnami/rabbitmq",
+        "^bitnami/kafka",
+        "^confluentinc/",
+        "^nats(:|$)",
+        "^apache/kafka"
+      ],
+      "code_hints": [
+        "amqplib",
+        "\\bpika\\b",
+        "kafkajs",
+        "confluent_kafka"
+      ],
+      "label": "message broker",
+      "image_target": {
+        "target": "rewrite",
+        "effort": "M",
+        "detail": "no like-for-like managed broker: Pulsar add-on (client change), Redis lists/streams for small needs, or keep a SaaS broker"
+      }
+    },
+    "proxy": {
+      "provider": null,
+      "images": [
+        "^nginx(:|$)",
+        "^traefik(:|$)",
+        "^caddy(:|$)",
+        "^haproxy(:|$)",
+        "^nginxinc/"
+      ],
+      "code_hints": [],
+      "label": "reverse proxy",
+      "image_target": {
+        "target": "drop",
+        "effort": "none",
+        "detail": "Clever load balancers do TLS and routing (keep it only if it serves static files: Static runtime)"
+      }
+    },
+    "dbadmin": {
+      "provider": null,
+      "images": [
+        "^adminer(:|$)",
+        "^dpage/pgadmin4",
+        "^phpmyadmin",
+        "^mongo-express"
+      ],
+      "code_hints": [],
+      "label": "database admin UI",
+      "image_target": {
+        "target": "drop",
+        "effort": "none",
+        "detail": "not needed: use the add-on's own access (psql/CLI) from your machine"
+      }
+    }
+  }
+}

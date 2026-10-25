@@ -1,0 +1,42 @@
+{
+  "id": "coolify-dokku-caprover",
+  "name": "Coolify / Dokku / CapRover",
+  "wave": 3,
+  "coverage": "detect-only",
+  "priority": 62,
+  "corpus": [
+    "https://github.com/ohld/django-telegram-bot",
+    "https://github.com/AienTech/dossier"
+  ],
+  "detect": [
+    {
+      "path": "(^|/)captain-definition$",
+      "strength": "strong",
+      "signal": "captain-definition (CapRover)"
+    },
+    {
+      "path": "(^|/)DOKKU_SCALE$",
+      "strength": "strong",
+      "signal": "DOKKU_SCALE"
+    },
+    {
+      "path": "(^|/)app\\.json$",
+      "content": "\\\"dokku\\\"",
+      "strength": "strong",
+      "signal": "app.json scripts.dokku"
+    },
+    {
+      "path": "(^|/)\\.buildpacks$",
+      "strength": "weak",
+      "signal": ".buildpacks"
+    },
+    {
+      "path": "(^|/)CHECKS$",
+      "strength": "weak",
+      "signal": "Dokku CHECKS"
+    }
+  ],
+  "min_weak": 2,
+  "not_covered_note": "Procfile/Dockerfile based, usually easy to land. Coolify leaves no detection file: it cannot be recognised, only its Dockerfile/compose.",
+  "traps": []
+}

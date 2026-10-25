@@ -1,0 +1,48 @@
+{
+  "id": "firebase",
+  "name": "Firebase",
+  "wave": 2,
+  "coverage": "detect-only",
+  "priority": 85,
+  "corpus": [
+    "https://github.com/firebase/friendlyeats-web",
+    "https://github.com/firebase/functions-samples"
+  ],
+  "detect": [
+    {
+      "path": "(^|/)firebase\\.json$",
+      "strength": "strong",
+      "signal": "firebase.json"
+    },
+    {
+      "path": "(^|/)\\.firebaserc$",
+      "strength": "strong",
+      "signal": ".firebaserc"
+    },
+    {
+      "path": "(^|/)(firestore|storage)\\.rules$",
+      "strength": "strong",
+      "signal": "security rules"
+    },
+    {
+      "path": "(^|/)apphosting\\.yaml$",
+      "strength": "strong",
+      "signal": "apphosting.yaml"
+    },
+    {
+      "dep": "firebase",
+      "strength": "weak"
+    },
+    {
+      "dep": "firebase-admin",
+      "strength": "strong"
+    },
+    {
+      "dep": "firebase-functions",
+      "strength": "strong"
+    }
+  ],
+  "min_weak": 2,
+  "not_covered_note": "BaaS: the front can move (landing A, Firebase stays); Firestore/Auth/Functions are rewrites. Same A/B/C logic as Supabase, not written yet.",
+  "traps": []
+}

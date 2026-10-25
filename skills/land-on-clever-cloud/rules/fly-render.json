@@ -1,0 +1,31 @@
+{
+  "id": "fly-render",
+  "name": "Fly.io / Render",
+  "wave": 2,
+  "coverage": "detect-only",
+  "priority": 45,
+  "corpus": [
+    "https://github.com/fly-apps/cron-manager",
+    "https://github.com/render-examples/full-stack-fastapi-template"
+  ],
+  "detect": [
+    {
+      "path": "(^|/)fly\\.toml$",
+      "strength": "strong",
+      "signal": "fly.toml"
+    },
+    {
+      "path": "(^|/)render\\.ya?ml$",
+      "strength": "strong",
+      "signal": "render.yaml"
+    },
+    {
+      "code": "\\bFLY_(APP_NAME|REGION|MACHINE_ID)\\b|\\bRENDER_EXTERNAL_URL\\b",
+      "strength": "weak",
+      "signal": "platform variables"
+    }
+  ],
+  "min_weak": 2,
+  "not_covered_note": "Dockerfile/native app usually lands; [[mounts]] volumes → FS Bucket (not HDS) or Cellar; render.yaml blueprint → several apps; Fly Machines API usage is not portable.",
+  "traps": []
+}

@@ -1,0 +1,20 @@
+{
+  "_doc": "Dependency versions surfaced as a 'Watch' line in the Vision, never as blockers. Only what was observed is listed; check the rest with the ecosystem's own audit command.",
+  "entries": [
+    {
+      "ecosystem": "nuget",
+      "package": "Npgsql",
+      "line": "4.1",
+      "at_or_below": "4.1.9",
+      "observed": "NU1903 (high severity vulnerability advisory) reported by the .NET build log for Npgsql 4.1.9, validation round 1, 2026-10-25",
+      "advice": "upgrade Npgsql (dotnet list package --vulnerable shows the patched versions)",
+      "short": "high-severity advisory NU1903 (seen in a .NET build, 2026-10-25): optional upgrade proposed in Changes",
+      "optional_change": "upgrade Npgsql 4.1.9 → 8.x (fixes NU1903); NpgsqlConnection/NpgsqlCommand as used here are expected to be compatible — confirm with a dotnet build before keeping it"
+    }
+  ],
+  "audit_commands": {
+    "nuget": "dotnet list package --vulnerable",
+    "npm": "npm audit --omit=dev",
+    "python": "pip-audit"
+  }
+}

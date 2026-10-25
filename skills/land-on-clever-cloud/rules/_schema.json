@@ -1,0 +1,36 @@
+{
+  "_doc": "Shape of every rules/<provenance>.json file (plain JSON, no YAML). scan.sh evaluates `detect`; plan.py uses `coverage`, `priority`, `components`, `traps`.",
+  "id": "short id, also the file name",
+  "name": "human name",
+  "wave": "1, 2 or 3 (validation order)",
+  "coverage": "full = plan.py maps components | detect-only = recognised, plan answers 'not yet covered: report only'",
+  "priority": "higher wins when several provenances are detected (the primary drives the plan)",
+  "corpus": [
+    "repositories that test this provenance (corpus/CORPUS.md)"
+  ],
+  "detect": [
+    {
+      "path": "regex on the committed path",
+      "content": "optional regex the file content must match",
+      "strength": "strong|weak",
+      "signal": "label"
+    },
+    {
+      "dep": "package name in package.json / requirements / pyproject / composer / Gemfile",
+      "strength": "strong|weak"
+    },
+    {
+      "code": "regex searched in committed text files",
+      "strength": "strong|weak",
+      "signal": "label",
+      "code_only": "optional true: search code files only (not .env, docs, configs); comment lines are always ignored"
+    }
+  ],
+  "detected_when": "any strong signal, or at least `min_weak` weak signals (default 2)",
+  "min_weak": 2,
+  "components": "provenance-specific mapping read by plan.py (keys documented in each file)",
+  "traps": [
+    "one line each, shown in the detail report"
+  ],
+  "not_covered_note": "for detect-only files: what the honest answer is today"
+}

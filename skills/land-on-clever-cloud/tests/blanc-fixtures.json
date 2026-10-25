@@ -1,0 +1,468 @@
+{
+ "_doc": "Regression fixtures for the 16 'blanc' dry runs (ANALYSE-BLANC.md) and the local VM case (ECARTS-LOCAL.md): SMALL files written for these tests, modelled on the named public repositories (no file copied). selftest.sh builds each as a git repo, runs scan + plan offline, and checks the expected primary provenance, mode, verdict and Vision lines; it also checks that two runs give the same plan (determinism).",
+ "fixtures": {
+  "beanstalk": {
+   "modelled_on": "aws-samples/eb-node-express-sample",
+   "files": {
+    "package.json": "{\"name\":\"signup\",\"scripts\":{\"start\":\"node app.js\"},\"dependencies\":{\"express\":\"^4\",\"aws-sdk\":\"^2\"}}",
+    "package-lock.json": "{}",
+    "app.js": "const AWS = require('aws-sdk');\nconst express = require('express');\nconst ddb = new AWS.DynamoDB();\nconst sns = new AWS.SNS();\nconst app = express();\napp.post('/signup', (req, res) => { ddb.putItem({}, () => sns.publish({}, () => res.send('ok'))); });\napp.listen(process.env.PORT || 3000);\n",
+    ".ebextensions/options.config": "option_settings:\n  aws:elasticbeanstalk:application:environment:\n    THEME: flatly\n  aws:elasticbeanstalk:environment:proxy:staticfiles:\n    /static: /static\n",
+    ".ebextensions/create-dynamodb-table.config": "Resources:\n  StartupSignupsTable:\n    Type: AWS::DynamoDB::Table\n"
+   },
+   "expect": {
+    "mode": "report-only",
+    "no": [
+     "nothing functional",
+     "EUR/h",
+     "no code change",
+     "Repo:**"
+    ],
+    "has": [
+     "**POC:** none",
+     "DynamoDB",
+     "SNS / SQS",
+     "static files served by Elastic Beanstalk"
+    ],
+    "primary": "beanstalk-amplify"
+   }
+  },
+  "cloudflare": {
+   "modelled_on": "cloudflare/d1-northwind",
+   "files": {
+    "package.json": "{\"name\":\"northwind\",\"scripts\":{\"build\":\"react-router build\",\"deploy\":\"wrangler deploy\"},\"dependencies\":{\"react-router\":\"7.0.0\"},\"devDependencies\":{\"wrangler\":\"4.0.0\",\"@cloudflare/vite-plugin\":\"1.0.0\"}}",
+    "wrangler.jsonc": "{\n  \"name\": \"northwind\",\n  \"main\": \"workers/app.ts\",\n  \"d1_databases\": [{ \"binding\": \"DB\", \"database_name\": \"northwind\" }]\n}\n",
+    "workers/app.ts": "export default { async fetch(request, env) { const c = request.cf; return new Response(String(c && c.country)); } };\n",
+    "app/routes/customer.tsx": "export async function loader({ context }) { const db = context.cloudflare.env.DB; return db.prepare('select 1').all(); }\n"
+   },
+   "expect": {
+    "mode": "report-only",
+    "no": [
+     "nothing functional",
+     "EUR/h",
+     "no code change",
+     "Repo:**"
+    ],
+    "has": [
+     "**POC:** none",
+     "Cloudflare D1",
+     "request.cf",
+     "Worker bindings"
+    ],
+    "primary": "cloudflare"
+   }
+  },
+  "digitalocean": {
+   "modelled_on": "digitalocean/sample-laravel",
+   "files": {
+    "composer.json": "{\"require\":{\"php\":\"^8.2\",\"laravel/framework\":\"^11.0\"}}",
+    "artisan": "#!/usr/bin/env php\n<?php\n",
+    "public/index.php": "<?php\nrequire __DIR__.'/../vendor/autoload.php';\n",
+    "package.json": "{\"private\":true,\"scripts\":{\"build\":\"vite build\"},\"devDependencies\":{\"vite\":\"5.0.0\"}}",
+    "Procfile": "web: heroku-php-apache2 public/\n",
+    ".do/app.yaml": "name: sample-laravel\nservices:\n- name: web\n  run_command: heroku-php-apache2 public/\n  envs:\n  - key: APP_KEY\n    value: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n"
+   },
+   "expect": {
+    "mode": "report-only",
+    "no": [
+     "nothing functional",
+     "EUR/h",
+     "no code change",
+     "Repo:**"
+    ],
+    "has": [
+     "**POC:** none",
+     "APP_KEY value committed",
+     "build and run commands"
+    ],
+    "primary": "digitalocean"
+   }
+  },
+  "dokku": {
+   "modelled_on": "ohld/django-telegram-bot",
+   "files": {
+    "requirements.txt": "Django==3.2.9\ngunicorn==20.1.0\ncelery==5.2.0\nredis==4.0.0\ndj-database-url==0.5.0\n",
+    "runtime.txt": "python-3.8.3\n",
+    "manage.py": "import os, sys\n",
+    "dtb/wsgi.py": "from django.core.wsgi import get_wsgi_application\napplication = get_wsgi_application()\n",
+    "dtb/settings.py": "import os, sys\nimport dj_database_url\nDATABASES = {'default': dj_database_url.config(default='sqlite:///db.sqlite3')}\nREDIS_URL = os.getenv('REDIS_URL', 'redis://redis:6379')\nTELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')\nif TELEGRAM_TOKEN is None:\n    sys.exit(1)\n",
+    "Procfile": "release: python manage.py migrate --noinput\nweb: gunicorn --bind :$PORT dtb.wsgi:application\nworker: celery -A dtb worker --loglevel=INFO\nbeat: celery -A dtb beat --loglevel=INFO\n",
+    "DOKKU_SCALE": "web=1\nworker=0\nbeat=0\n",
+    "docker-compose.yml": "services:\n  db:\n    image: postgres:12\n  redis:\n    image: redis:alpine\n  web:\n    build: .\n    ports:\n      - \"8000:8000\"\n  celery:\n    build: .\n    command: celery -A dtb worker\n"
+   },
+   "expect": {
+    "mode": "report-only",
+    "no": [
+     "nothing functional",
+     "EUR/h",
+     "no code change",
+     "Repo:**"
+    ],
+    "has": [
+     "**POC:** none",
+     "DOKKU_SCALE",
+     "release process"
+    ],
+    "primary": "coolify-dokku-caprover"
+   }
+  },
+  "firebase": {
+   "modelled_on": "firebase/friendlyeats-web",
+   "files": {
+    "nextjs-end/package.json": "{\"name\":\"end\",\"scripts\":{\"build\":\"next build\",\"start\":\"next start\"},\"dependencies\":{\"next\":\"16.0.0\",\"firebase\":\"11.0.0\"}}",
+    "nextjs-end/apphosting.yaml": "env:\n  - variable: GEMINI_API_KEY\n    secret: gemini-api-key\n",
+    "nextjs-end/firebase.json": "{\"hosting\":{}}",
+    "nextjs-end/src/lib/firebase/clientApp.js": "import { initializeApp } from 'firebase/app';\nimport { getAuth } from 'firebase/auth';\nimport { getFirestore } from 'firebase/firestore';\nimport { getStorage } from 'firebase/storage';\nexport const app = initializeApp();\nexport const auth = getAuth(app);\nexport const db = getFirestore(app);\nexport const storage = getStorage(app);\n",
+    "reactfire-end/functions/package.json": "{\"name\":\"functions\",\"scripts\":{\"shell\":\"firebase functions:shell\",\"start\":\"npm run shell\"},\"dependencies\":{\"firebase-functions\":\"6.0.0\",\"firebase-admin\":\"13.0.0\"}}",
+    "reactfire-end/firebase.json": "{\"functions\":{}}"
+   },
+   "expect": {
+    "mode": "report-only",
+    "no": [
+     "nothing functional",
+     "EUR/h",
+     "no code change",
+     "Repo:**"
+    ],
+    "has": [
+     "**POC:** none",
+     "Cloud Firestore",
+     "Firebase Auth",
+     "Cloud Functions"
+    ],
+    "primary": "firebase"
+   }
+  },
+  "fly": {
+   "modelled_on": "fly-apps/cron-manager",
+   "files": {
+    "go.mod": "module github.com/example/cron-manager\n\ngo 1.22\n\nrequire github.com/superfly/fly-go v0.1.0\n",
+    "cmd/start/main.go": "package main\n\nimport \"os\"\n\nfunc main() { _ = os.Getenv(\"FLY_API_TOKEN\") }\n",
+    "internal/cron/client.go": "package cron\n\nimport _ \"github.com/superfly/fly-go/flaps\"\n",
+    "fly.toml": "app = 'cron-manager'\n\n[[mounts]]\n  source = 'data'\n  destination = '/data'\n",
+    "Dockerfile": "FROM golang:1.22 AS b\nRUN go build -o /start ./cmd/start\nFROM alpine\nCMD [\"/start\"]\n"
+   },
+   "expect": {
+    "mode": "report-only",
+    "no": [
+     "nothing functional",
+     "EUR/h",
+     "no code change",
+     "Repo:**"
+    ],
+    "has": [
+     "**POC:** none",
+     "Fly Machines API",
+     "Fly volume"
+    ],
+    "primary": "fly-render"
+   }
+  },
+  "gcp-azure": {
+   "modelled_on": "Azure-Samples/msdocs-flask-postgresql-sample-app",
+   "files": {
+    "requirements.txt": "Flask==3.0.0\nFlask-SQLAlchemy==3.1.1\nFlask-Migrate==4.0.0\npsycopg2-binary==2.9.9\n",
+    "app.py": "import os\nfrom flask import Flask\napp = Flask(__name__)\nif 'WEBSITE_HOSTNAME' not in os.environ:\n    app.config.from_object('azureproject.development')\nelse:\n    app.config.from_object('azureproject.production')\n",
+    "azureproject/development.py": "import os\nDATABASE_URI = 'postgresql+psycopg2://{u}:{p}@{h}/{n}'.format(u=os.environ['DBUSER'], p=os.environ['DBPASS'], h=os.environ['DBHOST'], n=os.environ['DBNAME'])\n",
+    "azureproject/production.py": "import os\nDATABASE_URI = os.environ.get('AZURE_POSTGRESQL_CONNECTIONSTRING')\nHOST = os.environ['AZURE_POSTGRESQL_HOST']\n",
+    "startup.sh": "flask db upgrade\ngunicorn --workers 2 --threads 4 --timeout 60 --bind=0.0.0.0 app:app\n",
+    "azure.yaml": "name: msdocs-flask-postgresql\nservices:\n  web:\n    project: .\n    language: py\n    host: appservice\n",
+    ".devcontainer/docker-compose.yml": "services:\n  app:\n    build:\n      context: ..\n    command: sleep infinity\n    network_mode: service:db\n  db:\n    image: postgres:latest\n"
+   },
+   "expect": {
+    "mode": "report-only",
+    "no": [
+     "nothing functional",
+     "EUR/h",
+     "no code change",
+     "Repo:**"
+    ],
+    "has": [
+     "**POC:** none",
+     "AZURE_POSTGRESQL_",
+     "WEBSITE_HOSTNAME",
+     "startup script with migrations"
+    ],
+    "primary": "gcp-azure"
+   }
+  },
+  "kubernetes": {
+   "modelled_on": "stefanprodan/podinfo",
+   "files": {
+    "go.mod": "module github.com/example/podinfo\n\ngo 1.22\n",
+    "cmd/podinfo/main.go": "package main\n\nfunc main() {}\n",
+    "charts/podinfo/Chart.yaml": "apiVersion: v2\nname: podinfo\nversion: 6.0.0\n",
+    "kustomize/kustomization.yaml": "resources:\n  - deployment.yaml\n",
+    "deploy/database/pvc.yaml": "apiVersion: v1\nkind: PersistentVolumeClaim\nmetadata:\n  name: data\n",
+    "deploy/database/cronjob.yaml": "apiVersion: batch/v1\nkind: CronJob\nmetadata:\n  name: backup\n",
+    "otel/docker-compose.yaml": "services:\n  podinfo-frontend:\n    build: ..\n    ports:\n      - \"9898:9898\"\n  jaeger:\n    image: jaegertracing/all-in-one\n"
+   },
+   "expect": {
+    "mode": "report-only",
+    "no": [
+     "nothing functional",
+     "EUR/h",
+     "no code change",
+     "Repo:**"
+    ],
+    "has": [
+     "**POC:** none",
+     "PersistentVolumeClaims",
+     "CronJobs"
+    ],
+    "primary": "kubernetes"
+   }
+  },
+  "netlify": {
+   "modelled_on": "netlify-templates/next-platform-starter",
+   "files": {
+    "package.json": "{\"name\":\"starter\",\"scripts\":{\"build\":\"next build\",\"start\":\"next start\"},\"dependencies\":{\"next\":\"16.0.0\",\"@netlify/blobs\":\"8.0.0\"}}",
+    "package-lock.json": "{}",
+    "netlify.toml": "[build]\n  command = \"npm run build\"\n  publish = \".next\"\n",
+    "app/blobs/actions.js": "import { getStore } from '@netlify/blobs';\nexport async function save() { return getStore('shapes'); }\n",
+    "app/image-cdn/page.jsx": "export default function P() { return <img src=\"/.netlify/images?url=/a.jpg\" />; }\n",
+    "app/page.jsx": "const ctx = process.env.CONTEXT;\nexport default function H() { return <p>{ctx}</p>; }\n",
+    "netlify/edge-functions/rewrite.js": "export default async (req, context) => context.geo;\n",
+    "public/__forms.html": "<form name=\"feedback\" data-netlify=\"true\"></form>\n"
+   },
+   "expect": {
+    "mode": "report-only",
+    "no": [
+     "nothing functional",
+     "EUR/h",
+     "no code change",
+     "Repo:**"
+    ],
+    "has": [
+     "**POC:** none",
+     "Netlify Blobs",
+     "Netlify Forms",
+     "Netlify Image CDN",
+     "Edge Functions"
+    ],
+    "primary": "netlify"
+   }
+  },
+  "platformsh": {
+   "modelled_on": "platformsh-templates/laravel",
+   "files": {
+    "composer.json": "{\"require\":{\"php\":\"^8.0\",\"laravel/framework\":\"^9.0\",\"platformsh/laravel-bridge\":\"^2.0\"}}",
+    "artisan": "#!/usr/bin/env php\n<?php\n",
+    "public/index.php": "<?php\n",
+    ".platform.app.yaml": "name: app\ntype: php:8.0\nhooks:\n    deploy: |\n        php artisan migrate --force\nmounts:\n    'storage/app/public':\n        source: local\nworkers:\n    queue:\n        commands:\n            start: php artisan queue:work\n",
+    ".platform/services.yaml": "db:\n    type: mariadb:10.4\ncache:\n    type: redis:6.0\n",
+    "docker-compose.yml": "services:\n  laravel.test:\n    build:\n      context: ./vendor/laravel/sail/runtimes/8.0\n    environment:\n      LARAVEL_SAIL: 1\n  mysql:\n    image: mysql/mysql-server:8.0\n"
+   },
+   "expect": {
+    "mode": "report-only",
+    "no": [
+     "nothing functional",
+     "EUR/h",
+     "no code change",
+     "Repo:**"
+    ],
+    "has": [
+     "**POC:** none",
+     "deploy hook",
+     "workers (queue",
+     "persistent mounts",
+     "laravel-bridge"
+    ],
+    "primary": "platformsh-upsun"
+   }
+  },
+  "pocketbase": {
+   "modelled_on": "spinspire/pocketbase-sveltekit-starter",
+   "files": {
+    "pb/go.mod": "module pocketbase\n\ngo 1.22\n\nrequire github.com/pocketbase/pocketbase v0.22.0\n",
+    "pb/main.go": "package main\n\nimport \"github.com/pocketbase/pocketbase\"\n\nfunc main() { pocketbase.New().Start() }\n",
+    "pb/pb_hooks/main.pb.js": "routerAdd('GET', '/hello', (c) => c.string(200, 'hi'));\n",
+    "pb/pb_migrations/1_init.js": "migrate((db) => {});\n",
+    "Dockerfile": "FROM golang:1.22 AS b\nRUN go build\nFROM alpine\nCMD [\"/pb/pocketbase\", \"serve\", \"--http\", \"0.0.0.0:8090\"]\n",
+    "DEPLOYMENT.md": "Run it with `pocketbase serve --http 0.0.0.0:8090 --publicDir ../sk/build`.\n",
+    "sk/package.json": "{\"name\":\"sk\",\"scripts\":{\"build\":\"vite build\"},\"dependencies\":{\"pocketbase\":\"0.21.0\"},\"devDependencies\":{\"vite\":\"5.0.0\",\"@sveltejs/adapter-static\":\"3.0.0\"}}"
+   },
+   "expect": {
+    "mode": "report-only",
+    "no": [
+     "nothing functional",
+     "EUR/h",
+     "no code change",
+     "Repo:**"
+    ],
+    "has": [
+     "**POC:** none",
+     "pb_data",
+     "own port"
+    ],
+    "primary": "appwrite-pocketbase"
+   }
+  },
+  "railway": {
+   "modelled_on": "railwayapp-templates/strapi",
+   "files": {
+    "package.json": "{\"name\":\"strapi\",\"scripts\":{\"build\":\"strapi build\",\"start\":\"strapi start\"},\"dependencies\":{\"@strapi/strapi\":\"5.0.0\",\"pg\":\"8.0.0\"},\"engines\":{\"node\":\">=22\"}}",
+    "package-lock.json": "{}",
+    "README.md": "# Strapi\n\n[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template/strapi)\n\nMedia will automatically be persisted.\n",
+    "config/database.js": "module.exports = ({ env }) => ({ connection: { client: 'postgres', connection: { connectionString: env('DATABASE_URL') } } });\n",
+    "config/env/development/database.js": "module.exports = ({ env }) => ({ connection: { connectionString: env('DATABASE_PUBLIC_URL') } });\n",
+    "config/server.js": "module.exports = ({ env }) => ({ app: { keys: env.array('APP_KEYS') } });\n"
+   },
+   "expect": {
+    "mode": "report-only",
+    "no": [
+     "nothing functional",
+     "EUR/h",
+     "no code change",
+     "Repo:**"
+    ],
+    "has": [
+     "**POC:** none",
+     "DATABASE_PUBLIC_URL",
+     "Railway volume"
+    ],
+    "primary": "railway"
+   }
+  },
+  "render": {
+   "modelled_on": "render-examples/full-stack-fastapi-template",
+   "files": {
+    "render.yaml": "services:\n  - type: web\n    name: backend\n    runtime: docker\n    dockerCommand: bash scripts/start.sh\n    envVars:\n      - key: SECRET_KEY\n        generateValue: true\n      - key: FIRST_SUPERUSER_PASSWORD\n        sync: false\n      - key: POSTGRES_SERVER\n        fromDatabase:\n          name: db\n          property: host\n  - type: web\n    name: frontend\n    runtime: static\n    buildCommand: bun run build\n    staticPublishPath: ./frontend/dist\ndatabases:\n  - name: db\n",
+    "backend/pyproject.toml": "[project]\nname = \"app\"\nrequires-python = \">=3.10\"\ndependencies = [\"fastapi[standard]\", \"sqlmodel\", \"psycopg[binary]\", \"alembic\"]\n",
+    "backend/app/main.py": "from fastapi import FastAPI\napp = FastAPI()\n",
+    "backend/app/core/config.py": "import os\nPOSTGRES_SERVER = os.environ['POSTGRES_SERVER']\nPOSTGRES_USER = os.environ.get('POSTGRES_USER')\nPROJECT_NAME = os.environ['PROJECT_NAME']\n",
+    "backend/scripts/start.sh": "bash scripts/prestart.sh\nfastapi run --port $PORT app/main.py\n",
+    "frontend/package.json": "{\"name\":\"frontend\",\"scripts\":{\"build\":\"vite build\"},\"devDependencies\":{\"vite\":\"6.0.0\"}}",
+    "compose.yml": "services:\n  db:\n    image: postgres:17\n  backend:\n    image: '${DOCKER_IMAGE_BACKEND}'\n    build:\n      context: ./backend\n    command: bash scripts/start.sh\n    ports:\n      - \"8000:8000\"\n  frontend:\n    image: '${DOCKER_IMAGE_FRONTEND}'\n    build:\n      context: ./frontend\n    ports:\n      - \"5173:80\"\n"
+   },
+   "expect": {
+    "mode": "report-only",
+    "no": [
+     "nothing functional",
+     "EUR/h",
+     "no code change",
+     "Repo:**"
+    ],
+    "has": [
+     "**POC:** none",
+     "render.yaml variables",
+     "static site service",
+     "pre-deploy commands"
+    ],
+    "primary": "fly-render"
+   }
+  },
+  "scalingo": {
+   "modelled_on": "Scalingo/sample-python-django",
+   "files": {
+    "Procfile": "web: gunicorn mydjango.wsgi --log-file -\n",
+    "scalingo.json": "{\"name\":\"sample\",\"addons\":[{\"plan\":\"postgresql:postgresql-starter-512\",\"options\":{\"version\":\"16\"}}]}",
+    ".sclng/metadata.toml": "languages = [\"python\"]\n",
+    "pyproject.toml": "[project]\nname = \"sample\"\nrequires-python = \">=3.14\"\ndependencies = [\"django\", \"django-environ\", \"dj-database-url\", \"gunicorn\", \"psycopg\", \"whitenoise\"]\n",
+    "uv.lock": "version = 1\n",
+    ".python-version": "3.14\n",
+    "manage.py": "import os\n",
+    "mydjango/wsgi.py": "from django.core.wsgi import get_wsgi_application\napplication = get_wsgi_application()\n",
+    "mydjango/settings.py": "import os\nimport environ\nimport dj_database_url\nenv = environ.Env()\nSECRET_KEY = 'django-insecure-0123456789abcdefghij'\nALLOWED_HOSTS = ['*']\nDATABASE_URL = env('DATABASE_URL', default=None)\nif DATABASE_URL:\n    DATABASES = {'default': dj_database_url.config(default=DATABASE_URL)}\nelse:\n    DATABASES = {}\nSTATIC_ROOT = os.path.join(os.path.dirname(__file__), 'staticfiles')\n",
+    "docker-compose.yml": "services:\n  db:\n    image: postgres:16\n  web:\n    build: .\n    ports:\n      - \"8000:8000\"\n    environment:\n      DATABASE_URL: postgresql://u:p@db:5432/d\n"
+   },
+   "expect": {
+    "primary": "scalingo",
+    "mode": "plan",
+    "verdict": "ready with 2 changes",
+    "has": [
+     "requirements.txt` — add requirements.txt (uv export",
+     "DATABASE_URL: fall back to the PostgreSQL add-on variable",
+     "SECRET_KEY written in the code",
+     "CC_PYTHON_MANAGE_TASKS=migrate --no-input, collectstatic --noinput",
+     "Reply: **go"
+    ],
+    "no": [
+     "Blocking"
+    ]
+   }
+  },
+  "terraform-aws": {
+   "modelled_on": "hashicorp-education/learn-terraform-lambda-api-gateway",
+   "files": {
+    "main.tf": "resource \"aws_s3_bucket\" \"lambda_bucket\" {\n  bucket_prefix = \"learn\"\n}\n",
+    "terraform.tf": "terraform {\n  cloud {\n    workspaces { name = \"learn\" }\n  }\n}\n",
+    "hello-world/hello.js": "module.exports.handler = async (event) => ({ statusCode: 200, body: 'hi' });\n"
+   },
+   "expect": {
+    "mode": "report-only",
+    "no": [
+     "nothing functional",
+     "EUR/h",
+     "no code change",
+     "Repo:**"
+    ],
+    "has": [
+     "**POC:** none",
+     "S3 buckets",
+     "remote Terraform state"
+    ],
+    "primary": "terraform-aws"
+   }
+  },
+  "vm-manual": {
+   "modelled_on": "miguelgrinberg/microblog",
+   "files": {
+    "requirements.txt": "Flask==3.0.0\nFlask-SQLAlchemy==3.1.1\nFlask-Migrate==4.0.5\npsycopg2-binary==2.9.9\nredis==5.0.1\nrq==1.15.1\nelasticsearch==8.11.0\ngunicorn==21.2.0\n",
+    "Procfile": "web: flask db upgrade; flask translate compile; gunicorn microblog:app\nworker: rq worker microblog-tasks\n",
+    "microblog.py": "from app import create_app\napp = create_app()\n",
+    "config.py": "import os\nbasedir = os.path.abspath(os.path.dirname(__file__))\nclass Config:\n    SECRET_KEY = os.environ.get('SECRET_KEY') or 'you-will-never-guess'\n    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', '') or 'sqlite:///' + os.path.join(basedir, 'app.db')\n    ELASTICSEARCH_URL = os.environ.get('ELASTICSEARCH_URL')\n    REDIS_URL = os.environ.get('REDIS_URL') or 'redis://'\n",
+    "app/__init__.py": "from elasticsearch import Elasticsearch\ndef create_app():\n    es = Elasticsearch([1]) if 1 else None\n",
+    "deployment/supervisor/microblog.conf": "[program:microblog]\ncommand=/home/ubuntu/microblog/venv/bin/gunicorn -b localhost:8000 -w 4 microblog:app\n",
+    "deployment/supervisor/microblog-tasks.conf": "[program:microblog-tasks]\ncommand=/home/ubuntu/microblog/venv/bin/rq worker microblog-tasks\n",
+    "deployment/nginx/microblog": "server {\n    listen 443 ssl;\n    server_name _;\n    location / { proxy_pass http://localhost:8000; }\n}\n"
+   },
+   "expect": {
+    "primary": "vm-manual",
+    "mode": "plan",
+    "verdict": "ready with 1 change",
+    "has": [
+     "CC_WORKER_COMMAND_0=rq worker microblog-tasks",
+     "CC_PRE_RUN_HOOK=flask db upgrade",
+     "CC_PYTHON_MODULE=microblog:app",
+     "go without elasticsearch"
+    ],
+    "no": [
+     "Blocking"
+    ]
+   }
+  },
+  "local-flask-sqlite": {
+   "modelled_on": "corpus/local-flask-sqlite (written for this skill)",
+   "files": {
+    "requirements.txt": "flask==3.1.2\ngunicorn==23.0.0\n",
+    "app.py": "import os\nimport sqlite3\nfrom flask import Flask, g, request, send_from_directory\nDB_PATH = os.environ.get('RECETTES_DB', 'recettes.db')\nUPLOADS = os.environ.get('RECETTES_UPLOADS', 'uploads')\napp = Flask(__name__)\ndef db():\n    g.db = sqlite3.connect(DB_PATH)\n    return g.db\n@app.post('/recettes')\ndef add():\n    f = request.files.get('photo')\n    f.save(os.path.join(UPLOADS, 'x.png'))\n@app.get('/photos/<nom>')\ndef photo(nom):\n    return send_from_directory(UPLOADS, nom)\n",
+    "purge.py": "import os\nimport sqlite3\nfrom app import DB_PATH, UPLOADS\nconn = sqlite3.connect(DB_PATH)\nfor nom in os.listdir(UPLOADS):\n    os.remove(os.path.join(UPLOADS, nom))\n",
+    "deploy/recettes.service": "[Service]\nWorkingDirectory=/srv/recettes\nEnvironment=RECETTES_DB=/srv/recettes/recettes.db\nEnvironment=RECETTES_UPLOADS=/srv/recettes/uploads\nExecStart=/srv/recettes/venv/bin/gunicorn --workers 2 --bind 127.0.0.1:8000 app:app\n",
+    "deploy/nginx-recettes.conf": "server {\n    listen 80;\n    server_name recettes.example.org;\n    client_max_body_size 5m;\n    location / { proxy_pass http://127.0.0.1:8000; }\n}\n",
+    "deploy/crontab": "30 3 * * * cd /srv/recettes && venv/bin/python purge.py >> /var/log/purge.log 2>&1\n",
+    "templates/index.html": "<title>Carnet de recettes</title>\n"
+   },
+   "expect": {
+    "primary": "vm-manual",
+    "mode": "plan",
+    "verdict_prefix": "ready with",
+    "has": [
+     "SQLite → PostgreSQL",
+     "local files → Cellar",
+     "scripts/migrate-sqlite.py",
+     "clevercloud/` — new files cron-env.sh, cron-job.sh, cron.json",
+     "CC_PYTHON_MODULE=app:app",
+     "CRON_VARIABLES=",
+     "Data to migrate — BEFORE the first deploy",
+     "nothing, once the data and files are migrated",
+     "Europe/Paris",
+     "Reply: **go"
+    ],
+    "no": [
+     "Blocking"
+    ]
+   }
+  }
+ }
+}

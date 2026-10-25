@@ -1,0 +1,39 @@
+{
+  "id": "terraform-aws",
+  "name": "Terraform / AWS (Lambda, RDS, S3)",
+  "wave": 2,
+  "coverage": "detect-only",
+  "priority": 35,
+  "corpus": [
+    "https://github.com/hashicorp-education/learn-terraform-lambda-api-gateway",
+    "https://github.com/hashicorp-education/learn-terraform-rds"
+  ],
+  "detect": [
+    {
+      "path": "\\.tf$",
+      "strength": "strong",
+      "signal": "Terraform files"
+    },
+    {
+      "path": "(^|/)\\.terraform\\.lock\\.hcl$",
+      "strength": "strong",
+      "signal": ".terraform.lock.hcl"
+    },
+    {
+      "path": "(^|/)(serverless\\.ya?ml|samconfig\\.toml|cdk\\.json)$",
+      "strength": "strong",
+      "signal": "Serverless/SAM/CDK"
+    },
+    {
+      "dep": "@aws-sdk/client-dynamodb",
+      "strength": "weak"
+    },
+    {
+      "dep": "boto3",
+      "strength": "weak"
+    }
+  ],
+  "min_weak": 2,
+  "not_covered_note": "IaC is not the app: separate infra from code. RDS → PostgreSQL add-on, S3 → Cellar, Lambda → small server (rewrite), IAM/VPC dropped. Mapping not written yet.",
+  "traps": []
+}

@@ -1,0 +1,36 @@
+{
+  "id": "platformsh-upsun",
+  "name": "Platform.sh / Upsun",
+  "wave": 2,
+  "coverage": "detect-only",
+  "priority": 55,
+  "corpus": [
+    "https://github.com/platformsh-templates/laravel",
+    "https://github.com/upsun/demo"
+  ],
+  "detect": [
+    {
+      "path": "(^|/)\\.platform\\.app\\.yaml$",
+      "strength": "strong",
+      "signal": ".platform.app.yaml"
+    },
+    {
+      "path": "^\\.platform/(services|routes)\\.yaml$",
+      "strength": "strong",
+      "signal": ".platform/services.yaml"
+    },
+    {
+      "path": "^\\.upsun/config\\.yaml$",
+      "strength": "strong",
+      "signal": ".upsun/config.yaml"
+    },
+    {
+      "code": "PLATFORM_RELATIONSHIPS",
+      "strength": "strong",
+      "signal": "PLATFORM_RELATIONSHIPS"
+    }
+  ],
+  "min_weak": 2,
+  "not_covered_note": "Very close to Clever: hooks → CC_*_HOOK, relationships → add-on variables, mounts → FS Bucket/Cellar, multi-app → several apps. Mapping not written yet.",
+  "traps": []
+}

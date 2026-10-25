@@ -1,0 +1,40 @@
+{
+  "id": "supabase",
+  "name": "Supabase",
+  "wave": 1,
+  "coverage": "full",
+  "priority": 90,
+  "corpus": ["test-froid-supabase todo-app / storage-app (internal cold tests)"],
+  "detect": [
+    {"path": "^supabase/config\\.toml$", "strength": "strong", "signal": "supabase/config.toml"},
+    {"path": "^supabase/migrations/", "strength": "strong", "signal": "supabase/migrations"},
+    {"path": "^supabase/functions/", "strength": "strong", "signal": "supabase/functions (Edge Functions)"},
+    {"dep": "@supabase/supabase-js", "strength": "strong"},
+    {"dep": "@supabase/ssr", "strength": "strong"},
+    {"dep": "supabase", "strength": "weak"},
+    {"code": "SUPABASE_URL|SUPABASE_(ANON|PUBLISHABLE)_KEY|\\.supabase\\.co", "strength": "strong", "signal": "Supabase variables / host"}
+  ],
+  "components": {
+    "decision_only": true,
+    "levels": {
+      "A": {"name": "App moves, BaaS stays", "target_app": "native", "target_baas": "keep-saas", "effort": "S",
+             "rule": "the POC plugs into a DEV Supabase project of the developer, never production; source untouched (no login, no signup, no write)"},
+      "B": {"name": "Data moves, Auth stays", "target_db": "addon", "effort": "L",
+             "rule": "PostgreSQL add-on accessed server-side; RLS rewritten with FORCE ROW LEVEL SECURITY; browser .from() calls move to server routes"},
+      "C": {"name": "Full exit", "effort": "XL",
+             "rule": "auth in the app (or Keycloak where the zone has it), files to Cellar served with nosniff + CSP sandbox, functions to routes; detailed method in modules/supabase/GUIDE.md"}
+    },
+    "default_level": "A",
+    "counters": ["from", "auth", "storage", "channel", "rpc", "functions_invoke", "policies", "auth_uid"],
+    "migration_guide": "modules/supabase/GUIDE.md"
+  },
+  "traps": [
+    "Testing the source by logging in WRITES to it (sessions, refresh tokens, last_sign_in_at, sequences): source = read-only SQL only.",
+    "Landing A: the Clever URL must be added to the Auth redirect allow-list by the developer, on a dev project.",
+    "NEXT_PUBLIC_SUPABASE_* are build-time: set before the first build.",
+    "A service_role / sb_secret_ key in a NEXT_PUBLIC_ name is a leak: stop and tell the developer.",
+    "Storage migrated to an app route changes the files' origin: serve with X-Content-Type-Options: nosniff and CSP 'default-src 'none'; sandbox', inline only png/jpeg/webp/gif, refuse text/html and image/svg+xml.",
+    "Test the code path the app really uses (private bucket → /storage/v1/object/authenticated/…, not the public URL).",
+    "Health data: landing A keeps data on Supabase; sovereignty/HDS only holds for B or C in parhds."
+  ]
+}

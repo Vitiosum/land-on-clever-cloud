@@ -1,0 +1,52 @@
+# ---------------------------------------------------------------------------
+# GoTrue (supabase/auth) on Clever Cloud (Docker runtime).
+#
+# PREREQUISITE: the `supabase_auth_admin` role must EXIST BEFORE the first
+# start. GoTrue applies its DDL migrations at launch, but creates neither
+# the database nor the `auth` schema. Since the managed PostgreSQL add-on does
+# not allow role creation, this template assumes a dedicated plan opened by
+# support, or CKE (non-HDS track only: beta, no HDS zone).
+# See modules/supabase/reference/clever-cloud.md §0.
+#
+# Alternative to consider seriously BEFORE deploying this, on the
+# NON-HDS track only: the Keycloak add-on, native to Clever Cloud, which avoids
+# a container to operate. Keycloak exists in NO HDS zone: in HDS,
+# authentication is rewritten in the application (path 1).
+# ---------------------------------------------------------------------------
+# Latest version noted on 2026-10-24: v2.197.0. Check the current stable
+# version before deploying:
+#   curl -s https://api.github.com/repos/supabase/auth/releases/latest | jq -r .tag_name
+# Never go with `latest` in production.
+FROM supabase/auth:VERSION_TO_CHECK
+
+# Set CC_DOCKER_EXPOSED_HTTP_PORT=9999 on the application.
+EXPOSE 9999
+
+# THE FIVE STRICTLY REQUIRED VARIABLES, and only five:
+#
+#   GOTRUE_DB_DRIVER=postgres
+#   GOTRUE_DB_DATABASE_URL   connection as supabase_auth_admin
+#   GOTRUE_JWT_SECRET        THE SAME as PostgREST, Storage and Realtime
+#   API_EXTERNAL_URL         public URL of this service
+#   GOTRUE_SITE_URL          default redirect destination
+#
+# TRAP ON GOTRUE_SITE_URL: it is not just a default redirect, it is an
+# IMPLICIT ALLOW-LIST — any URI sharing the host is accepted as
+# redirect_to. Set it to the real public URL, never to a localhost
+# forgotten in production.
+#
+# CUSTOM ACCESS TOKEN HOOK — two verified traps:
+#   1. The function must return THE WHOLE claims object. GoTrue
+#      REPLACES the set of claims with the hook's output, it does not merge.
+#      A function that returns only its business claims breaks every token.
+#   2. supabase_auth_admin has by default NO rights on `public`. Grant it
+#      USAGE on the schema holding the function, EXECUTE on the
+#      function, then REVOKE execution from the client roles. If the hook reads
+#      a table, it also needs SELECT *and a policy* if RLS is enabled.
+#      Forgetting this returns HTTP 500 on every token issued: nobody
+#      can log in any more, and nothing in the application logs says so.
+#
+# SMTP: without a custom SMTP, the e-mail templates cannot be changed on
+# the entry-level plans. Check it before promising customised
+# transactional e-mails.
+CMD ["auth"]

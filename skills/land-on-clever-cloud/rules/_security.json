@@ -1,0 +1,15 @@
+{
+  "_doc": "Security patterns of the SOURCE app, reported in the Vision 'Security' line — never blocking, never copied as-is to the target (the plan's changes fix them). Regexes run on committed code files; `absent_in_file`: flag only when the file has no such call; `group_name`: capture group named in the message.",
+  "patterns": [
+    {"id": "upload-token-no-auth", "regex": "handleUpload\\(", "absent_in_file": "getServerSession|\\bauth\\(\\)|currentUser\\(|getUser\\(|verify(Token|Session)|requireAuth|clerk|lucia|next-auth",
+     "message": "upload-token route without authentication: anyone can obtain an upload token (anonymous uploads)"},
+    {"id": "auth-todo", "regex": "(⚠️|TODO|FIXME).{0,40}(own authentication|Authenticate|authenticate|authorization)",
+     "message": "authentication left as a TODO by the template"},
+    {"id": "bearer-env-undefined", "regex": "Bearer \\$\\{process\\.env\\.([A-Z_][A-Z0-9_]*)\\}", "group_name": 1,
+     "message": "compares a header with `Bearer ${process.env.%s}`: if the variable is unset, 'Bearer undefined' is accepted — refuse when it is missing, and compare in constant time (crypto.timingSafeEqual), never with !=="},
+    {"id": "client-mime", "regex": "['\"]Content-Type['\"]\\s*:\\s*[\\w.?]*\\.contentType\\b",
+     "message": "files served with a Content-Type taken from upload metadata (client-chosen): once files share the app's origin, serve with nosniff + CSP sandbox, inline only png/jpeg/webp/gif"},
+    {"id": "client-mime-allowlist", "regex": "allowedContentTypes\\s*:",
+     "message": "content type checked only against what the client declares (allowedContentTypes): verify the bytes server-side"}
+  ]
+}

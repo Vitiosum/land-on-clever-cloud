@@ -1,0 +1,37 @@
+{
+  "_readme": [
+    "Copy to check-files.json and adapt to the application routes. No secret: same identities as check-http.json (token_cmd / token_env).",
+    "Relative paths (manifest, command of token_cmd): resolved from the folder of THIS file, not from the current directory. Here storage-manifest.json and scripts/forge-token.mjs are next to check-files.json.",
+    "manifest: the one from migrate-storage.py; each PASS object is re-read through the application and its SHA-256 compared with the source one.",
+    "read.path and upload.path: templates {bucket} and {name} (encoded in the URL); upload.fields: raw {name}, {id:alice}, {random}.",
+    "read.identities: who re-reads each migrated file, as a list or per bucket ({\"avatars\": [\"anon\"], \"*\": []}); the owner is always added. Only identities that the SOURCE policies allow.",
+    "upload.format: 'multipart' (file_field + fields) or 'raw' (body = the file, type in Content-Type, e.g. PUT /api/files/{name}).",
+    "refused: cases taken from the source policies (someone else's file, write on behalf of someone else). 'upload': true for a write. status: list of accepted codes. On a migrated object, the owner re-reads it afterwards: intact bytes required.",
+    "A 409 on 'bob overwrites alice's avatar' proves the (bucket_id, name) uniqueness, NOT the UPDATE policy. replacement: the route that replaces an existing file (upsert); others must be refused (bytes intact), the owner accepted (new bytes re-read). Without such a route: test the UPDATE policy in SQL (reference/storage.md §8).",
+    "purge: deletion route; the objects uploaded by the check (including a refused or accepted HTML) are deleted at the end. Without it, their list is printed at the end, to purge by hand.",
+    "CELLAR_ADDON_HOST in the environment (not a secret) enables the direct anonymous access check on the bucket (403 expected)."
+  ],
+  "url": "https://app-xxxxxxxx.cleverapps.io",
+  "identities": {
+    "alice": { "id": "00000000-0000-0000-0000-00000000000a", "token_cmd": "node scripts/forge-token.mjs 00000000-0000-0000-0000-00000000000a", "headers": { "Authorization": "Bearer {token}" } },
+    "bob":   { "id": "00000000-0000-0000-0000-00000000000b", "token_env": "TOKEN_BOB", "headers": { "Authorization": "Bearer {token}" } }
+  },
+  "manifest": "storage-manifest.json",
+  "read": { "path": "/api/storage/{bucket}/{name}", "identities": { "avatars": ["anon", "bob"], "*": [] } },
+  "upload": {
+    "path": "/api/storage/{bucket}", "method": "POST", "format": "multipart",
+    "file_field": "file", "fields": { "path": "{name}" },
+    "identity": "alice", "bucket": "avatars", "name": "{id:alice}-check-{random}.{ext}",
+    "ok_statuses": [200, 201], "refused_statuses": [415]
+  },
+  "replacement": {
+    "path": "/api/storage/{bucket}/{name}", "method": "PUT", "format": "raw",
+    "others": "bob", "ok_statuses": [200], "refused_statuses": [403, 404]
+  },
+  "purge": { "path": "/api/storage/{bucket}/{name}", "method": "DELETE", "ok_statuses": [200, 204] },
+  "refused": [
+    { "name": "bob reads a private document of alice -> 403/404", "identity": "bob", "bucket": "documents", "object": "{id:alice}/statement.pdf", "status": [403, 404] },
+    { "name": "bob overwrites alice's avatar -> 403/409", "identity": "bob", "upload": true, "bucket": "avatars", "object": "{id:alice}-avatar.png", "status": [403, 409] }
+  ],
+  "status_missing": [404]
+}

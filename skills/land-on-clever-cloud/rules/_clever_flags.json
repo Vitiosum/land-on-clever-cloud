@@ -1,0 +1,25 @@
+{
+  "_doc": "Options accepted by each clever-tools 5.2.0 command, read with `clever help <cmd>` (or the command without arguments) on 2026-10-25. selftest.sh checks every clever command shown by the skill (docs, rules, dry runs) against this table.",
+  "commands": {
+    "stop": ["--alias", "--app"],
+    "delete": ["--alias", "--app", "--yes"],
+    "restart": ["--alias", "--app", "--commit", "--exit-on", "--follow", "--quiet", "--without-cache"],
+    "deploy": ["--alias", "--branch", "--exit-on", "--follow", "--force", "--quiet", "--same-commit-policy", "--tag"],
+    "scale": ["--alias", "--app", "--build-flavor", "--flavor", "--instances", "--max-flavor", "--max-instances", "--min-flavor", "--min-instances"],
+    "link": ["--alias", "--org"],
+    "create": ["--alias", "--format", "--github", "--org", "--owner", "--region", "--task", "--type"],
+    "logs": ["--addon", "--after", "--alias", "--app", "--before", "--deployment-id", "--format", "--search", "--since", "--until"],
+    "activity": ["--alias", "--app", "--follow", "--format", "--show-all"],
+    "domain": ["--alias", "--app", "--format"],
+    "env": ["--add-export", "--alias", "--app", "--format"],
+    "env set": ["--alias", "--app"],
+    "env rm": ["--alias", "--app"],
+    "addon create": ["--addon-version", "--format", "--link", "--option", "--org", "--plan", "--region", "--yes"],
+    "addon delete": ["--org", "--yes"],
+    "addon env": ["--format", "--org"],
+    "addon list": ["--format", "--org"],
+    "addon providers show": ["--format", "--org"],
+    "applications list": ["--format", "--org"],
+    "service link-addon": ["--alias", "--app"]
+  }
+}

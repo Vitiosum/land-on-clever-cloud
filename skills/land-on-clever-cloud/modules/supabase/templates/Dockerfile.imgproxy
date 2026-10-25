@@ -1,0 +1,45 @@
+# ---------------------------------------------------------------------------
+# imgproxy on Clever Cloud, backed by Cellar.
+#
+# Replaces the image transformation of Supabase Storage
+# (getPublicUrl(..., { transform })), which relies on imgproxy internally.
+#
+# It is the simplest container of the stack: no database dependency,
+# no role, no extension, no strictly required variable — the container
+# starts bare.
+# ---------------------------------------------------------------------------
+# Tag noted on 2026-10-24. Check it again before deploying:
+#   curl -s https://api.github.com/repos/imgproxy/imgproxy/releases/latest | jq -r .tag_name
+# Never go with `latest` in production.
+FROM ghcr.io/imgproxy/imgproxy:v4.0.19
+
+# imgproxy listens on 8080 (IMGPROXY_BIND=:8080), the default port of
+# Clever Cloud: CC_DOCKER_EXPOSED_HTTP_PORT is not needed here.
+EXPOSE 8080
+
+# SECURITY — do not skip.
+# URL signature verification is DISABLED BY DEFAULT, and
+# officially "highly recommended" in production. Without it, anyone
+# can have any image of your buckets transformed, as many times as
+# they like: that is a bill and a denial-of-service vector.
+#
+#   IMGPROXY_KEY   and   IMGPROXY_SALT
+#
+# Both MUST be HEXADECIMAL: imgproxy refuses to start if the
+# value cannot be decoded as hex. Generation:
+#   openssl rand -hex 32
+#
+# CELLAR SOURCES:
+#   IMGPROXY_USE_S3=true
+#   IMGPROXY_S3_ENDPOINT=https://$CELLAR_ADDON_HOST
+#   IMGPROXY_S3_ALLOWED_BUCKETS=avatars,medical-documents
+#   AWS_ACCESS_KEY_ID=$CELLAR_ADDON_KEY_ID
+#   AWS_SECRET_ACCESS_KEY=$CELLAR_ADDON_KEY_SECRET
+#
+# TRAP INHERITED FROM SUPABASE:
+# the official docker-compose assumes that Storage and imgproxy SHARE THE SAME
+# FILE SYSTEM (same mounted volume, `file` backend). This assumption
+# fails as soon as the two are split into separate applications — which Clever
+# Cloud requires, an application being one container. Both must therefore read
+# Cellar, not a shared volume.
+CMD ["imgproxy"]
