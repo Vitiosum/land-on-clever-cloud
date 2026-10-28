@@ -61,15 +61,25 @@
 #
 # Exit codes: 0 target ready, or plan printed (dry run) · 1 usage,
 # configuration or token refused · 2 a command failed, or price grid
-# unavailable · 75 rate limit, resume later.
+# unavailable, or the price incomplete (an item or the autoscaling ceiling
+# is not in the grid: no token) · 6 a variable's value starts with "-"
+# (names only: clever-tools 5.2.0 would read it as options and lose it; set
+# it in the Console) · 75 rate limit, resume later.
 #
-# Variables (all optional except TRACK):
-#   ZONE          non-hds: par (default) | hds: parhds (default), rbxhds, grahds
+# Variables (all optional except TRACK and PG_PLAN):
+#   ZONE          non-hds: par (default) | hds: par (default: the POC runs in par with SYNTHETIC
+#                 data, on the HDS-ready rules, until the HDS contract is signed), parhds once
+#                 HDS_CONTRACT=signed (the only HDS zone this skill proposes; a client who needs
+#                 another HDS zone sets ZONE himself, with HDS_CONTRACT=signed too)
+#   HDS_CONTRACT  hds track: `signed` when the client declares the HDS contract signed (the
+#                 script cannot check it: [declared]); then the default zone is parhds
 #   APP_TYPE      node (default) — type for `clever create --type`
-#   PG_PLAN       xxs_sml (default: standard size of the Clever demos, encrypted);
-#                 xxs_tny = smallest dedicated plan (45 connections, 512 MB,
-#                 encryptable, ~7 % cheaper) on request. `dev` refused in HDS, and
-#                 outside HDS only with ACCEPT_NO_ENCRYPTION=1 (throwaway test).
+#   PG_PLAN       REQUIRED, no default: the PostgreSQL plan the go named, the one
+#                 plan.json priced (provision.addons, provider postgresql-addon,
+#                 "plan"; screen 4 shows it). The script never picks one: a default
+#                 would create a plan other than the one priced and approved. `dev`
+#                 refused in HDS, and outside HDS only with ACCEPT_NO_ENCRYPTION=1
+#                 (throwaway test).
 #   PG_VERSION    major; default = the survey's, else 18. `dev` forces 18.
 #   ENCRYPTION    yes (default) — --option encryption=true, dedicated plans only
 #   CELLAR        yes | no ; default = yes if the survey has at least one bucket
@@ -243,8 +253,8 @@ survey() { if [[ -n "$SURVEY" ]]; then pyjson "$1" "$SURVEY"; fi; }
 # performance, Cellar in particular).
 # `clever create` AND `clever addon create` default to `par`: the zone is
 # therefore passed EXPLICITLY to every command. `par` is not HDS; a resource
-# created in the wrong zone is fixed by a migration, with downtime, and
-# compliance is broken in the meantime.
+# created in the wrong zone is fixed by a migration, with downtime, and it is
+# outside the certified scope in the meantime.
 # ---------------------------------------------------------------------------
 TRACK="${TRACK:-}"
 RE_ZONE='^[a-z0-9][a-z0-9-]{1,30}$'
@@ -256,36 +266,67 @@ case "$TRACK" in
              par) ;;
              *) echo "Zone $ZONE: outside Paris. Justify with a client reason (par is recommended)." >&2 ;;
            esac ;;
-  hds)     ZONE="${ZONE:-parhds}"
+  hds)     HDS_CONTRACT="${HDS_CONTRACT:-}"
+           [[ -z "$HDS_CONTRACT" || "$HDS_CONTRACT" == "signed" ]] || { echo "HDS_CONTRACT=signed, or unset (contract not signed yet)." >&2; exit 1; }
+           if [[ "$HDS_CONTRACT" == "signed" ]]; then ZONE="${ZONE:-parhds}"; else ZONE="${ZONE:-par}"; fi
            case "$ZONE" in
+             par) ;;
              parhds) ;;
-             rbxhds|grahds) echo "Zone $ZONE (OVHcloud): alternative to parhds, give the reason (DRP, choice of host)." >&2 ;;
-             *) echo "Zone $ZONE refused on the HDS track: parhds (recommended), rbxhds or grahds." >&2; exit 1 ;;
+             rbxhds|grahds) echo "Zone $ZONE: never proposed by this skill (parhds is); kept only because you set ZONE yourself." >&2 ;;
+             *) echo "Zone $ZONE refused on the HDS track: par (the POC, synthetic data) or, with HDS_CONTRACT=signed, parhds." >&2; exit 1 ;;
            esac
+           if [[ "$ZONE" != "par" && "$HDS_CONTRACT" != "signed" ]]; then
+             echo "Zone $ZONE refused: an HDS zone needs the HDS contract signed with Clever Cloud (declare it with HDS_CONTRACT=signed). Until then the POC runs in par with synthetic data." >&2; exit 1
+           fi
            cat <<'END'
-HDS PREREQUISITES — to have BEFORE provisioning:
+HDS PREREQUISITES — to have BEFORE real health data:
   - HDS contract signed with Clever Cloud (the zone alone is not enough);
   - dedicated plans and encryption at rest at creation;
   - certified scope service by service: to confirm in the contract.
 END
+           if [[ "$ZONE" == "par" ]]; then
+             echo "HDS-READY POC IN par: SYNTHETIC DATA ONLY until the HDS contract is signed (then parhds, with HDS_CONTRACT=signed): dedicated encrypted plans, only services present in parhds."
+           else
+             echo "HDS contract declared signed [declared]: the skill cannot check it. Synthetic data in the POC all the same; real data stays outside the skill."
+           fi
            ;;
   *) echo "TRACK=hds or TRACK=non-hds (question 1 of phase 0)." >&2; exit 1 ;;
 esac
 echo "Track $TRACK, zone $ZONE, organisation $ORG"
 
+# A resource of this prefix found in another zone: never linked. A run resumed from before the
+# POC moved to par (TRACK=hds, resources in parhds) needs the contract declared, not a deletion.
+zone_refused() {   # zone_refused <resource> <its zone>
+  local way="delete it or change the prefix"
+  if [[ "$2" == "parhds" && "$TRACK" == "hds" && "${HDS_CONTRACT:-}" != "signed" ]]; then
+    way="if the HDS contract is signed, declare it with HDS_CONTRACT=signed (the zone becomes parhds and $1 is reused); otherwise delete it or change the prefix"
+  fi
+  echo "REFUSED: $1 exists in zone $2, not $ZONE. Do not link: $way." >&2; exit 1
+}
+# A value that starts with "-": clever-tools 5.2.0 (cliparse 0.5.0, then minimist) reads
+# `clever env set NAME -abc` as options; the value is lost, or becomes `true`, and nothing
+# says so. Refused, names only (as <skill>/scripts/env-safe.sh push/copy, exit 6).
+dash_refused() {   # dash_refused <names…>
+  echo "REFUSED (names): $* start(s) with '-': the argument parser of clever-tools 5.2.0 reads such a value as options and would lose it or set \`true\`; set it in the Console." >&2; exit 6
+}
+
 # Availability of an add-on in the zone: read live, not assumed.
-addon_available() {   # called outside any `if`: set -e and codes 2/75 apply
-  local catalog zones
+addon_available() {   # addon_available <provider> [zone, default $ZONE] — called outside any `if`: set -e and codes 2/75 apply
+  local catalog zones want="${2:-$ZONE}"
   catalog="$(read_cmd "catalog $1" clever addon providers show "$1")" || exit $?
   zones=$(printf '%s\n' "$catalog" | grep -m1 '^Available regions:' || true)
   zones=" $(echo "${zones#*:}" | tr -d ' ' | tr ',' ' ') "
-  if [[ "$zones" == *" $ZONE "* ]]; then AVAILABLE=yes; else AVAILABLE=no; fi
+  if [[ "$zones" == *" $want "* ]]; then AVAILABLE=yes; else AVAILABLE=no; fi
 }
 
 # ---------------------------------------------------------------------------
 # 2. Database parameters, from the survey.
 # ---------------------------------------------------------------------------
-PG_PLAN="${PG_PLAN:-xxs_sml}"
+PG_PLAN="${PG_PLAN:-}"
+if [[ -z "$PG_PLAN" ]]; then
+  echo "PG_PLAN is required: the PostgreSQL plan the go named, the one plan.json priced (provision.addons, provider postgresql-addon, \"plan\"; screen 4 shows it): PG_PLAN=<that plan> TRACK=$TRACK $0 …. This script never picks one." >&2; exit 1
+fi
+[[ "$PG_PLAN" =~ ^[a-z0-9_]{1,30}$ ]] || { echo "PG_PLAN refused: a plan slug (lowercase letters, digits, '_')." >&2; exit 1; }
 SOURCE_MAJOR="$(survey version)"
 PG_VERSION="${PG_VERSION:-${SOURCE_MAJOR:-18}}"
 ENCRYPTION="${ENCRYPTION:-yes}"
@@ -316,7 +357,11 @@ if [[ -z "${CELLAR:-}" ]]; then
 fi
 if [[ "$CELLAR" == "yes" ]]; then
   addon_available cellar-addon
-  [[ "$AVAILABLE" == "yes" ]] || { echo "Cellar unavailable in $ZONE (the case of grahds). Change zone or storage." >&2; exit 1; }
+  [[ "$AVAILABLE" == "yes" ]] || { echo "Cellar unavailable in $ZONE. Change zone or storage." >&2; exit 1; }
+  if [[ "$TRACK" == "hds" && "$ZONE" == "par" ]]; then          # HDS-ready POC: only what parhds offers too
+    addon_available cellar-addon parhds
+    [[ "$AVAILABLE" == "yes" ]] || { echo "Cellar unavailable in parhds: the POC would not be HDS-ready. Change storage." >&2; exit 1; }
+  fi
 fi
 BUCKET_PREFIX="${BUCKET_PREFIX:-$PREFIX-}"
 
@@ -341,26 +386,28 @@ ensure_addon() {    # ensure_addon <name> <provider> <options…> -> ADDON_ID
   fi
   ADDON_ID="${line%% *}"
   region="${line#* }"; region="${region%% *}"
-  if [[ "$region" != "?" && "$region" != "$ZONE" ]]; then
-    echo "REFUSED: $name exists in zone $region, not $ZONE. Do not link: delete it or change the prefix." >&2; exit 1
-  fi
+  if [[ "$region" != "?" && "$region" != "$ZONE" ]]; then zone_refused "$name" "$region"; fi
 }
 
 # ---------------------------------------------------------------------------
 # PLAN — read-only calls. Nothing is created or changed before --approve.
 # ---------------------------------------------------------------------------
 plan() { printf '%s\n' "$*" >> "$PLAN"; }
-plan "track=$TRACK zone=$ZONE organisation=$ORG prefix=$PREFIX"
+plan "track=$TRACK zone=$ZONE hds_contract=${HDS_CONTRACT:-not declared} organisation=$ORG prefix=$PREFIX"
 L_PG="$(existing_addon "$PREFIX-pg")" || exit $?
 if [[ -z "$L_PG" ]]; then
   plan "CREATE   add-on postgresql-addon $PREFIX-pg: plan $PG_PLAN, version $PG_VERSION, encryption $ENCRYPTION (paid: --yes)"
 else
+  r="${L_PG#* }"; r="${r%% *}"; [[ "$r" == "?" || "$r" == "$ZONE" ]] || zone_refused "$PREFIX-pg" "$r"
   plan "REUSE    add-on $PREFIX-pg: $L_PG"
 fi
 if [[ "$CELLAR" == "yes" ]]; then
   L_CE="$(existing_addon "$PREFIX-cellar")" || exit $?
   if [[ -z "$L_CE" ]]; then plan "CREATE   add-on cellar-addon $PREFIX-cellar: plan S (paid: --yes)"
-  else plan "REUSE    add-on $PREFIX-cellar: $L_CE"; fi
+  else
+    r="${L_CE#* }"; r="${r%% *}"; [[ "$r" == "?" || "$r" == "$ZONE" ]] || zone_refused "$PREFIX-cellar" "$r"
+    plan "REUSE    add-on $PREFIX-cellar: $L_CE"
+  fi
   if [[ -n "$BUCKETS" ]]; then
     plan "BUCKETS  check or create (private): $(for b in $BUCKETS; do printf '%s%s ' "$BUCKET_PREFIX" "$b"; done)"
   fi
@@ -374,12 +421,15 @@ else
   P_APPS="$(read_cmd "list of apps" clever curl "https://api.clever-cloud.com/v2/organisations/$ORG/applications")" || exit $?
   code=0; P_NAMED="$(printf '%s' "$P_APPS" | pyjson named_app "$APP")" || code=$?
   [[ $code -eq 0 ]] || { echo "FAILED (code 2): list of apps unreadable (unexpected JSON)." >&2; exit 2; }
-  if [[ -n "$P_NAMED" ]]; then plan "LINK     existing app $APP: $P_NAMED"
+  if [[ -n "$P_NAMED" ]]; then
+    [[ "${P_NAMED#* }" == "?" || "${P_NAMED#* }" == "$ZONE" ]] || zone_refused "$APP" "${P_NAMED#* }"
+    plan "LINK     existing app $APP: $P_NAMED"
   else plan "CREATE   app $APP: type $APP_TYPE"; fi
 fi
 plan "LINK     add-ons to $APP (if not linked yet)"
-VAR_NAMES=""
+VAR_NAMES=""; DASHED=""
 [[ "$CELLAR" == "yes" ]] && VAR_NAMES="CELLAR_BUCKET_PREFIX"
+[[ "$CELLAR" == "yes" && "$BUCKET_PREFIX" == -* ]] && DASHED="CELLAR_BUCKET_PREFIX"
 # Names that would change how the app or its runtime starts: refused (same list as env-safe.sh).
 RE_RESERVED='^(PATH|HOME|SHELL|IFS|ENV|BASH_ENV|BASH_.*|LD_.*|DYLD_.*|NODE_OPTIONS|NODE_PATH|NPM_CONFIG_.*|PYTHON.*|PERL5?LIB|RUBYOPT|GIT_.*|CLEVER_.*|SSH_.*|TMPDIR|PS[0-9]|PROMPT_COMMAND|CDPATH)$'
 # Names that RUN a command on the app (hooks, run/worker commands, Docker build): allowed, but
@@ -395,6 +445,8 @@ if [[ -f .env.target ]]; then
       echo "REFUSED: .env.target sets $k (reserved: it would alter the runtime of the app). Remove it." >&2; exit 1
     fi
     [[ "$k" =~ $RE_RUNS ]] && ALERTS="$ALERTS $k"
+    v="${line#*=}"; v="${v%\"}"; v="${v#\"}"          # the value set_var would pass (never printed)
+    [[ "$v" == -* ]] && DASHED="${DASHED:+$DASHED }$k"
     VAR_NAMES="$VAR_NAMES $k"
   done < .env.target
 fi
@@ -402,6 +454,7 @@ if [[ "$APP_TYPE" == "node" && -f package.json ]] \
    && python3 -I -c 'import json,sys; sys.exit(0 if json.load(open("package.json")).get("scripts",{}).get("build") else 1)'; then
   VAR_NAMES="$VAR_NAMES CC_POST_BUILD_HOOK CC_NODE_DEV_DEPENDENCIES"
 fi
+[[ -z "$DASHED" ]] || dash_refused $DASHED
 plan "VARIABLES (names only):${VAR_NAMES:+ $VAR_NAMES}"
 for k in $ALERTS; do
   plan "ALERT    .env.target sets $k = *** : it RUNS a command on the app at build or start. Read its value in .env.target before approving."
@@ -419,7 +472,33 @@ PRICE_JSON="$(mktemp)"; CEILING_JSON="$(mktemp)"
 trap 'c=$?; rm -f "$OUT" "$ERRS" "$PLAN" "$PRICE_JSON" "$CEILING_JSON"; exit $c' EXIT
 code=0; python3 -I "$SKILL_ROOT/scripts/price.py" --zone "$ZONE" --json "${ITEMS[@]}" > "$PRICE_JSON" || code=$?
 [[ $code -le 1 ]] || { echo "FAILED (code 2): price grid unavailable: no token without a price." >&2; exit 2; }
-python3 -I "$SKILL_ROOT/scripts/price.py" --zone "$ZONE" --json "apps:$(lower "$MAX_FLAVOR")x$MAX_INST" > "$CEILING_JSON" || true
+[[ $code -eq 0 ]] || { echo "FAILED (code 2): price incomplete, an item is NOT IN THE GRID (price.py exit 1): no token without a complete price. Confirm the item in the Console." >&2; exit 2; }
+code=0; python3 -I "$SKILL_ROOT/scripts/price.py" --zone "$ZONE" --json "apps:$(lower "$MAX_FLAVOR")x$MAX_INST" > "$CEILING_JSON" || code=$?
+[[ $code -eq 0 ]] || { echo "FAILED (code 2): the autoscaling ceiling is not priced (apps:$(lower "$MAX_FLAVOR")x$MAX_INST: price.py exit $code, not in the grid or the grid failed): no token without a complete price. Confirm the flavor in the Console." >&2; exit 2; }
+
+# R37, R38 (e): in an HDS zone (HDS_CONTRACT=signed) the HDS price, from the same grid read — 1.4 × the resources (all in the
+# HDS organisation here), per hour, 2 h and per build, + the fee per HDS organisation (pricing.py's constants) — goes into
+# the PLAN, so the token binds it and the yes names it.
+case "$ZONE" in
+  parhds|rbxhds|grahds)
+    HDS_LINE="$(python3 -I - "$SKILL_ROOT/scripts/lib" "$PRICE_JSON" "$ZONE" <<'PY'
+import json, sys
+sys.path.insert(0, sys.argv[1]); import pricing
+q = json.load(open(sys.argv[2]))
+run = build = 0.0
+for l in q.get("lines") or []:
+    if l.get("in_grid"):
+        if l.get("build_only"):
+            build += pricing.HDS_UPLIFT * float(l.get("eur_per_build") or 0)
+        else:
+            run += pricing.HDS_UPLIFT * float(l.get("eur_per_hour") or 0)
+print("HDS price (zone %s, %g × the resources, all in the HDS organisation): %.4f EUR/h running · 2 h ≈ %.2f EUR · builds ≈ %.3f EUR each · "
+      "+ €%d/month per HDS organisation — communicated by Clever Cloud on 2026-10-27, not on the public pricing page — confirm on your quote/contract"
+      % (sys.argv[3], pricing.HDS_UPLIFT, run, run * 2, build, int(pricing.HDS_FEE)))
+PY
+)" || { echo "FAILED (code 2): the HDS price could not be computed: no token without it." >&2; exit 2; }
+    plan "$HDS_LINE" ;;
+esac
 
 # Token: plan + price + content of .env.target.
 # (approval.py adds the skill's code: scripts, rules, modules)
@@ -458,7 +537,7 @@ PY
 
 TOKEN: $TOKEN
   Show this plan and this price to the developer. Only an explicit answer
-  that names the plan and the price counts as consent; then re-run the same
+  that names the plan and the price (in an HDS zone: the HDS price) counts as consent; then re-run the same
   command with --approve $TOKEN. The token changes if the plan, the price,
   these scripts, .env.target or the state of the resources change.
 END
@@ -534,8 +613,7 @@ else
   code=0; NAMED="$(printf '%s' "$APPS" | pyjson named_app "$APP")" || code=$?
   [[ $code -eq 0 ]] || { echo "FAILED (code 2): list of apps unreadable (unexpected JSON); nothing created." >&2; exit 2; }
   if [[ -n "$NAMED" ]]; then
-    [[ "${NAMED#* }" == "?" || "${NAMED#* }" == "$ZONE" ]] \
-      || { echo "REFUSED: $APP exists in zone ${NAMED#* }, not $ZONE." >&2; exit 1; }
+    [[ "${NAMED#* }" == "?" || "${NAMED#* }" == "$ZONE" ]] || zone_refused "$APP" "${NAMED#* }"
     echo "    already exists (${NAMED%% *}): link only"
     attempt "link of $APP" clever link "${NAMED%% *}" --alias "$APP" --org "$ORG"
   else
@@ -569,7 +647,10 @@ echo "==> 6/7  Environment variables"
 # ERASES the others, `clever env import-vars` is broken in 5.2.0. The value
 # is on the command line for the duration of the call (no standard input in
 # 5.2.0, see the header); it is never printed.
-set_var() { attempt "variable $1" clever env set "$1" "$2" --alias "$APP"; echo "    $1"; }
+set_var() {
+  if [[ "$2" == -* ]]; then dash_refused "$1"; fi       # the dry run refused it already: the last guard before clever env set
+  attempt "variable $1" clever env set "$1" "$2" --alias "$APP"; echo "    $1"
+}
 if [[ -n "$CELLAR_ID" ]]; then set_var CELLAR_BUCKET_PREFIX "$BUCKET_PREFIX"; fi
 if [[ -f .env.target ]]; then
   while IFS= read -r line || [[ -n "$line" ]]; do
@@ -621,7 +702,7 @@ Next:
   2. Scheduled jobs (pg_cron replaced by Clever cron): copy
      $SKILL_ROOT/templates/cron/cron-env.sh and cron-job.sh into clevercloud/,
      clevercloud/cron.json calls e.g. "\$ROOT/clevercloud/cron-job.sh POST /tasks/<name>".
-     On the app: CC_PRE_RUN_HOOK="bash clevercloud/cron-env.sh",
+     On the app: CC_PRE_RUN_HOOK="bash clevercloud/cron-env.sh", CRON_RUNS_HERE=1,
      CRON_VARIABLES="<names the job needs>", CRON_BASE_URL (e.g. the internal
      API URL), CRON_TOKEN_VAR=<name of the token variable>. A job runs with an
      EMPTY environment, no variables and no INSTANCE_NUMBER. Scripts executable

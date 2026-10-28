@@ -70,8 +70,8 @@ it only for two or three trivial rules, and write it down at gate 1.
 **Not portable as is** (find them in the code, decide):
 image transformations (`modules/supabase/reference/clever-cloud.md` §4 imgproxy), signed URLs
 `createSignedUrl` (Cellar pre-signed URLs: not tested here), resumable
-TUS uploads (not tested). **HDS**: Cellar exists in `parhds` and `rbxhds`,
-not in `grahds`; Cellar has no `encryption` option (`clever addon
+TUS uploads (not tested). **HDS**: Cellar exists in `parhds` (the only
+HDS zone this skill proposes); Cellar has no `encryption` option (`clever addon
 providers show`): a required encryption is done in the application.
 
 ---
@@ -112,7 +112,7 @@ no upload.
   in path style and in vhost style).
 - **Signature**: SigV4, region **`us-east-1`**; `CELLAR_ADDON_HOST` is a
   host **without scheme** (prefix it with `https://`):
-  `curl --aws-sigv4 "aws:amz:us-east-1:s3" -K <(printf 'user = "%s:%s"\n' "$CELLAR_ADDON_KEY_ID" "$CELLAR_ADDON_KEY_SECRET") "https://$CELLAR_ADDON_HOST/<bucket>/<object>"`
+  `curl -q --aws-sigv4 "aws:amz:us-east-1:s3" -K <(printf 'user = "%s:%s"\n' "$CELLAR_ADDON_KEY_ID" "$CELLAR_ADDON_KEY_SECRET") "https://$CELLAR_ADDON_HOST/<bucket>/<object>"`
   (credentials through `-K` from `printf`, a shell builtin: never in
   the argv of `curl`, visible with `ps`).
 - **Recent `aws` CLI** (observed in 2.23+): `put-object` fails

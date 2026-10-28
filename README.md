@@ -4,9 +4,14 @@
 
 Migrate an app from **Heroku, Vercel, Supabase, docker-compose or a VM** to **Clever Cloud**, from your own repository, with an AI coding agent.
 
-An agent skill (Claude Code, Codex and any tool that reads the [Agent Skills](https://agentskills.io) format) that shows a developer, from their own git repository, what their app becomes on Clever Cloud — component by component, with effort, evidence, the live price and a closed verdict.
-After an explicit yes it deploys a real POC in their account, proves it works over HTTP, logs and the real code paths, and prints how to stop or delete everything.
-The first question decides the path: health data (HDS zone `parhds`) or not (Paris, `par`).
+An agent skill (Claude Code, Codex and any tool that reads the [Agent Skills](https://agentskills.io) format) that leads the conversation the way a good presales engineer would, from your own git repository:
+
+1. **What I read**: the agent reads the repository silently and shows its components, with the blockers first (security, platform traps).
+2. **A few questions** (5 at most, pre-filled): health data and the HDS contract, what really runs in production, the load, the service level; a skipped one stays a labelled assumption.
+3. **Compatibility and price**: a POC and a production verdict, what you lose, the POC per hour and three production levels at the live public price, a five-line migration sketch, and when to talk to a person at Clever Cloud.
+4. **Your decision**: go (it names the plan and the price), go without one component, or report only; after a go, a real POC in your organisation (Paris, `par`, or `parhds` once an HDS contract is signed), proven on its real code path, with the commands to stop or delete it.
+5. **After the POC, on request**: a decision recap for your team, a contact request for Clever Cloud, a pre-cutover checklist; nothing is created and no real data is touched.
+
 Supabase apps get a full migration module (survey, data, auth, Storage → Cellar with SHA-256 proof, replayable acceptance).
 Everything deterministic is a script with `--help` and JSON output; the agent orchestrates and explains, in the developer's language.
 
@@ -32,7 +37,7 @@ In your app's repository:
 ## Guard-rails
 
 - **Nothing paid without your yes.** Provisioning is a dry run by default: the exact commands, the price read from the public grid, and a token. The token is a consistency check (what runs is what you were shown), not consent: the agent runs it only after your explicit yes naming plan and price.
-- **Compliant from creation**: databases on dedicated plans, encrypted at rest (`--option encryption=true`, impossible later); DEV plans refused in HDS; never a service absent from the HDS zone; `--org` is always explicit.
+- **Encrypted from creation, on the production plan**: the POC's databases take the realistic production plan, encrypted at rest (`--option encryption=true`, impossible later); DEV plans refused for health data; never a service absent from `parhds` in the HDS organisation; `--org` is always explicit. The skill says "HDS-ready architecture: yes / missing …", never more; the HDS price is shown as the rule Clever Cloud communicated (€200/month per HDS organisation + 1.4 × its resources, to confirm on the quote), Premium as its public formula.
 - **The source platform is read-only**: no login, no sign-up, no write (no `supabase db push`, no `config push`, no `vercel env pull` by hand).
 - **Your repository is untrusted input**: every Python run isolated (`python3 -I`), commands as argv arrays, repository text shell-quoted in every printed command and marked `«…»` as data, committed `.clever.json` / `.clever-landing/` refused.
 - **Secrets**: no value printed (one shared masker), sensitive files `umask 077` / 600 / 700, secrets for psql/curl through 600 files.
@@ -57,10 +62,10 @@ A plain repository (no provenance recognised) is planned from its runtimes and s
 
 ```
 skills/land-on-clever-cloud/
-  SKILL.md            the workflow and the imposed rules
+  SKILL.md            the journey and the imposed rules
   reference/          zones, platform contract, runtimes and hooks, troubleshooting, output shapes
   rules/              one JSON per provenance (signals, mappings, traps)
-  scripts/            preflight, scan, plan, price, provision, env-safe, deploy, prove, mask, ledger, migrate-files, selftest
+  scripts/            preflight, scan, questions, plan, price, provision, env-safe, deploy, prove, mask, ledger, migrate-files, migrate-sqlite, deliverables, selftest
   templates/cron/     the cron pattern (empty job environment, one instance)
   modules/supabase/   the Supabase migration module (GUIDE.md, reference, scripts, templates)
   EXAMPLES.md         real outputs on public repositories
@@ -69,7 +74,7 @@ install.sh
 
 ## Feedback
 
-Tried it on your app? Open an issue with the Vision the agent showed, the final verdict, and what failed or made the agent hesitate. A platform marked *report only* that matters to you is a useful issue too.
+Tried it on your app? Open an issue with the screens the agent showed, the final verdict, and what failed or made the agent hesitate. A platform marked *report only* that matters to you is a useful issue too.
 
 ## Report a security issue
 

@@ -17,8 +17,10 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import approval  # noqa: E402
-from common import (CONTROL_RX, ENV_NAME_RX, HDS_ZONES, SECRETISH_NAME, SLUG_RX, TOKEN_RX, Catalog,  # noqa: E402
+from common import (ADDON_VERSION_RX, APP_ID_RX, CONTROL_RX, DEFAULT_DOMAIN_GONE, ENV_NAME_RX, HDS_ZONES, SECRETISH_NAME, SLUG_RX, TOKEN_RX, Catalog,  # noqa: E402
                     TRACKED_STATE_ADVICE, fake_clever, known_plan, selftest_mode, mask, read_ledger, safe_folder, services, tracked_state, zones_snapshot)
+
+ROUTE_PATH_RX = re.compile(r"\A/[A-Za-z0-9/_-]{1,60}\Z")           # a route path read by the scan (plan.py's rule): the only form one of its texts may quote
 
 ENCRYPTABLE = {"postgresql-addon", "mysql-addon", "redis-addon", "mongodb-addon", "es-addon"}
 
@@ -76,7 +78,7 @@ def verify_addon(ad, org, want_encryption, zone=None):
     if zone and region and str(region).lower() != str(zone).lower():
         problems.append("zone is %s, the plan expects %s" % (region, zone))
     if want_encryption and enc is False:
-        problems.append("reused add-on is NOT encrypted: the Vision's 'encrypted' would be false")
+        problems.append("reused add-on is NOT encrypted: the screens' 'encrypted' would be false")
     if want_encryption and enc is None and not problems:
         return {"ok": None, "id": rid, "plan": plan, "encrypted": None, "source": source,
                 "why": "encryption could not be read (%s): NOT verified — not a mismatch; do not claim 'encrypted'" % source}
@@ -95,7 +97,7 @@ def check_token(kind, v):
 
 def check_value(kind, v):
     if CONTROL_RX.search(str(v)):
-        refuse("%s contains a control character (\\n, \\r, \\t, \\x00-\\x1f): refused" % kind)
+        refuse("%s contains a control or invisible character (Unicode Cc, Cf, Zl, Zp: \\n, \\t, a zero-width joiner, a soft hyphen, a BOM…): refused" % kind)
 
 
 def validate(spec, a):
@@ -114,11 +116,23 @@ def validate(spec, a):
             if not ENV_NAME_RX.match(k):
                 refuse("environment variable name %r is invalid (^[A-Z_][A-Z0-9_]*$)" % k)
             check_value("value of %s" % k, v)
+            if str(v).startswith("-"):      # clever-tools 5.2.0 reads `clever env set NAME -x` as options (cliparse, then minimist): the value would be lost
+                refuse("the value of %s starts with '-': the argument parser of clever-tools 5.2.0 would read it as an option and lose it — set it by hand in the Console, or change it" % k)
             if k == "APP_FOLDER" and safe_folder(v) is None:
                 refuse("APP_FOLDER %r is not a plain relative folder" % v)
         for n in ap.get("secrets_generate") or []:
             if not ENV_NAME_RX.match(str(n)):
                 refuse("secret name %r is invalid" % n)
+        sc = ap.get("secrets_copy")
+        if sc is not None:
+            if not (isinstance(sc, dict) and isinstance(sc.get("names"), list) and sc["names"]):
+                refuse("secrets_copy of app %s is not {from, names}" % ap.get("alias"))
+            check_slug("secrets_copy source", sc.get("from"))
+            if sc["from"] == ap.get("alias"):
+                refuse("app %s copies its secrets from itself" % ap.get("alias"))
+            for n in sc["names"]:
+                if not isinstance(n, str) or not ENV_NAME_RX.match(n):
+                    refuse("secret name %r (secrets_copy) is invalid" % n)
     for ad in spec.get("addons", []):
         check_slug("add-on name", ad.get("name"))
         for k in ("provider", "plan"):
@@ -128,6 +142,9 @@ def validate(spec, a):
         for o in ad.get("options") or []:
             if not re.fullmatch(r"^[a-z0-9_-]+=[a-z0-9_-]+$", str(o)):
                 refuse("add-on option %r is invalid" % o)
+        if ad.get("version") is not None and not (isinstance(ad["version"], str) and ADDON_VERSION_RX.match(ad["version"])):
+            # a version comes from the repository (app.json, scalingo.json, a compose image, render.yaml): only a plain version token reaches --addon-version, and it is never echoed
+            refuse("the version of add-on %s is not a plain version number (like 16 or 8.4): regenerate the plan with plan.py" % ad.get("name"))
         for l in ad.get("link") or []:
             check_slug("link alias", l)
 
@@ -187,12 +204,20 @@ def existing(org_main, org_second):
     return out
 
 
-def linked_aliases(repo):
+def clever_json_apps(repo):
+    """The `apps` entries of the repository's .clever.json that are objects; [] for anything else (a missing file, not JSON, a top-level list, "apps": null…): the file
+    is the repository's word, it never ends a run with a traceback."""
     try:
         with open(os.path.join(repo, ".clever.json")) as f:
-            return {a.get("alias") for a in json.load(f).get("apps", [])}
-    except (OSError, ValueError):
-        return set()
+            d = json.load(f)
+    except (OSError, ValueError, RecursionError):
+        return []
+    apps = d.get("apps") if isinstance(d, dict) else None
+    return [x for x in apps if isinstance(x, dict)] if isinstance(apps, list) else []
+
+
+def linked_aliases(repo):
+    return {x["alias"] for x in clever_json_apps(repo) if isinstance(x.get("alias"), str)}
 
 
 def build(plan, a):
@@ -264,11 +289,19 @@ def build(plan, a):
                 refuse("unknown secret format %r for %s" % (fmt, name))
             env_steps.append({"id": "secret-%s-%s" % (ap["alias"], name),
                               "cmd": ["bash", os.path.join(a.scripts, "env-safe.sh"), "generate", name, "--alias", ap["alias"]] + (["--format", fmt] if fmt else [])})
-        names = sorted(env) + list(ap.get("secrets_generate") or [])
+        names = sorted(env) + list(ap.get("secrets_generate") or []) + list((ap.get("secrets_copy") or {}).get("names") or [])
         if names:
             verify_steps.append({"id": "verify-env-" + ap["alias"],
                                  "cmd": ["bash", os.path.join(a.scripts, "env-safe.sh"), "verify", ",".join(names), "--alias", ap["alias"]]})
     app_aliases = {x["alias"] for x in apps}
+    for ap in apps:        # a beat / scheduler app gets the web app's secrets COPIED (after they were generated there), never generated a second time (env-safe.sh copy: no value shown)
+        sc = ap.get("secrets_copy")
+        if not sc:
+            continue
+        if sc["from"] not in app_aliases:
+            refuse("app %s copies its secrets from %s, which is not in this run (--without): leave both out, or neither" % (ap["alias"], sc["from"]))
+        env_steps.append({"id": "copy-secrets-%s" % ap["alias"],
+                          "cmd": ["bash", os.path.join(a.scripts, "env-safe.sh"), "copy", ",".join(sc["names"]), "--from", sc["from"], "--alias", ap["alias"]]})
     for ad in addons:
         z = ad.get("zone") or zone
         if ad.get("org") != "secondary" and hds and z not in HDS_ZONES:
@@ -280,7 +313,7 @@ def build(plan, a):
                 refuse("plan dev for %s: unencrypted and without backups — it would need a migration later. Use a dedicated plan, or pass --allow-dev-plan for a throwaway trial" % ad["name"])
         opts = list(ad.get("options") or [])
         if ad["provider"] in ENCRYPTABLE and ad["plan"] != "dev" and "encryption=true" not in opts:
-            opts.append("encryption=true")   # compliant from creation: encryption cannot be added later
+            opts.append("encryption=true")   # encrypted from creation: encryption cannot be added later
         avail = cat.available(ad["provider"], z)
         if avail is False:
             refuse("%s is not available in zone %s (%s)" % (ad["provider"], z, cat.label(ad["provider"])))
@@ -288,6 +321,8 @@ def build(plan, a):
         cmd = ["clever", "addon", "create", ad["provider"], ad["name"], "--plan", ad["plan"], "--region", z]
         for o in opts:
             cmd += ["--option", o]
+        if ad.get("version"):
+            cmd += ["--addon-version", ad["version"]]      # validated above (test T4: --addon-version 16 gave PostgreSQL 16.15)
         if links and ad.get("org") != "secondary":
             cmd += ["--link", links[0]]
         cmd += org_args(ad.get("org"))
@@ -306,51 +341,115 @@ def build(plan, a):
         for l in links[1:]:
             steps.append({"id": "link-%s-%s" % (ad["component"], l), "cmd": ["clever", "service", "link-addon", ad["name"], "--alias", l]})
     steps += env_steps + verify_steps   # order: apps → add-ons → links → env → verify
-    quote, price_note = recompute_price(spec, apps, zone, a, without)
-    token = approval.token([json.dumps([s.get("cmd") or s.get("manual") for s in steps], sort_keys=True),
-                            json.dumps([(s.get("reuse") or {}).get("verify") for s in steps], sort_keys=True),
-                            json.dumps({k: v for k, v in (quote or {}).items() if k != "read_at"}, sort_keys=True)])      # + the skill's own code; never plan.json's price
+    quote, price_note, item_orgs = recompute_price(spec, apps, zone, a, without)
+    hds_price = hds_line = None
+    if hds and quote:               # R38 (e), R37: the HDS price from the same grid read, bound to the token: the yes names it in an HDS zone
+        hds_price, hds_line = hds_quote(quote, item_orgs, zone)
+    # ONE rule, shared with plan.py (price.price_gaps): an item the grid does not price (`missing`) makes the price incomplete and blocks the
+    # approval; an add-on with no grid price source (`unpriced`: Keycloak, FS Bucket...) is named and bound to the token, but does not block a POC
+    gaps = _pricemod().price_gaps(quote["missing"] if quote else [], unpriced_addons(spec, without))
+    price_unavailable = quote is None and not a.no_live       # the grid could not be read, or holds no application price (R6)
+    price_missing = gaps["missing"]                           # never counted as free
+    token = None if (price_unavailable or price_missing) else approval.token([           # no complete price, no token
+        json.dumps([s.get("cmd") or s.get("manual") for s in steps], sort_keys=True),
+        json.dumps([(s.get("reuse") or {}).get("verify") for s in steps], sort_keys=True),
+        price_binding(quote, gaps["unpriced"], hds_line)])      # + the skill's own code; never plan.json's price
     for s in steps:
         if s.get("yes_gated"):
             s["cmd_when_approved"] = s["cmd"] + ["--yes"]
     kinds = {c.get("id"): c.get("kind") for c in plan.get("components", [])}
-    order = [x["alias"] for x in apps if kinds.get(x["component"]) == "worker"] + [x["alias"] for x in apps if kinds.get(x["component"]) != "worker"]
-    return {"zone": zone, "hds": hds, "org": a.org, "org_label": org_label, "deploy_order": order, "second_org": a.second_org, "steps": steps, "approval_token": token,
-            "price": quote, "price_note": price_note, "plan_price": plan.get("price"), "without": sorted(without)}
+    singles = {c.get("id") for c in plan.get("components", []) if c.get("singleton") is True}
+    # the workers first, the web apps, and a beat / scheduler app LAST: it starts after the app that migrates (a Django beat on DatabaseScheduler fails on an unmigrated database)
+    order = ([x["alias"] for x in apps if kinds.get(x["component"]) == "worker" and x["component"] not in singles]
+             + [x["alias"] for x in apps if kinds.get(x["component"]) != "worker" and x["component"] not in singles]
+             + [x["alias"] for x in apps if x["component"] in singles])
+    after_deploy = {x["alias"]: "clever domain rm <default domain> --alias %s" % x["alias"] for x in apps if x["component"] in singles}
+    # what a no to that removal leaves: the scheduler app serves the web app's routes on its default domain, an env route included when the plan found one
+    env_paths = [f_["path"] for f_ in (plan.get("security") or []) if isinstance(f_, dict) and f_.get("id") == "env-route" and isinstance(f_.get("path"), str)
+                 and ROUTE_PATH_RX.match(f_["path"])][:3]
+    return {"zone": zone, "hds": hds, "org": a.org, "org_label": org_label, "deploy_order": order, "singleton_aliases": sorted(after_deploy), "domain_rm": after_deploy, "env_route_paths": env_paths, "second_org": a.second_org, "steps": steps, "approval_token": token,
+            "price": quote, "price_note": price_note, "price_unavailable": price_unavailable, "price_missing": price_missing,
+            "price_hds": hds_price, "price_hds_line": hds_line, "price_item_orgs": item_orgs,
+            "price_unpriced": gaps["unpriced"], "no_live": bool(a.no_live), "plan_price": plan.get("price"), "without": sorted(without)}
+
+
+def _pricemod():
+    """price.py, the one place that reads the grid and computes the hourly price (also used by plan.py and pricing.py)."""
+    d = os.path.dirname(a_scripts_dir())
+    if d not in sys.path:
+        sys.path.insert(0, d)
+    import price as pricemod
+    return pricemod
+
+
+def _price_sources():
+    return {v.get("provider"): v.get("price_source") for v in services().values() if v.get("provider")}
+
+
+def unpriced_addons(spec, without):
+    """Component ids of the add-ons the grid has no price source for (rules/_services.json: price_source null), the same ids plan.py lists."""
+    src = _price_sources()
+    return sorted({str(ad.get("component") or ad.get("name") or "add-on") for ad in spec.get("addons") or []
+                   if ad.get("component") not in without and not src.get(ad.get("provider"))})
+
+
+def price_binding(quote, unpriced, hds_line=None):
+    """What the approval token binds about the price: the quote of the commands (without the time it was read), the sorted list of add-ons the
+    grid does not price and, in an HDS zone, the HDS price line printed (R38): a yes covers exactly what the developer was shown."""
+    return json.dumps({"quote": {k: v for k, v in (quote or {}).items() if k != "read_at"}, "not_priced": sorted(unpriced), "hds": hds_line}, sort_keys=True)
+
+
+def hds_quote(quote, item_orgs, zone):
+    """R37 on the dry run's own quote (R38 e): 1.4 × the HDS organisation's items + the second organisation's items at grid price — per hour, for 2 hours and per
+    build — and the fee per HDS organisation; pricing.py's constants are the one source. Returns (dict, the line printed and bound to the token)."""
+    import pricing
+    run = build = 0.0
+    for l, org in zip(quote.get("lines") or [], item_orgs):
+        if not l.get("in_grid"):
+            continue
+        k = 1.0 if org == "secondary" else pricing.HDS_UPLIFT
+        if l.get("build_only"):
+            build += k * float(l.get("eur_per_build") or 0)
+        else:
+            run += k * float(l.get("eur_per_hour") or 0)
+    h = {"run_eur_per_hour": round(run, 6), "poc_2h_eur": round(run * 2, 2), "build_eur_per_build": round(build, 4), "fee_eur_per_month": pricing.HDS_FEE,
+         "uplift": pricing.HDS_UPLIFT, "orgs": pricing.HDS_ORGS}
+    line = ("HDS price (zone %s, %g × the HDS organisation's items, the second organisation at grid price): %.4f EUR/h running · 2 h ≈ %.2f EUR · builds ≈ %.3f EUR each "
+            "· + €%d/month per HDS organisation — communicated by Clever Cloud on 2026-10-27, not on the public pricing page — confirm on your quote/contract") % (
+        zone, pricing.HDS_UPLIFT, h["run_eur_per_hour"], h["poc_2h_eur"], h["build_eur_per_build"], int(pricing.HDS_FEE))
+    return h, line
 
 
 def recompute_price(spec, apps, zone, a, without):
     """É1: the price shown and bound to the token is computed HERE from the commands that will run (flavors,
     instances, add-on plans), never read from plan.json. --no-live: not computed (said so)."""
     if a.no_live:
-        return None, "price NOT recomputed (--no-live): read it with price.py before any yes"
-    items = []
+        return None, "price NOT recomputed (--no-live): read it with price.py before any yes", []
+    items, orgs = [], []             # orgs: the organisation of each item ("main" / "secondary"), for the HDS price (R38 e)
     for ap in apps:
         n = int(ap.get("instances", 1) or 1)
         items.append("apps:%s%s" % (str(ap["flavor"]).lower(), ("x%d" % n) if n > 1 else ""))
+        orgs.append(ap.get("org") or "main")
     if apps:
         items.append("apps:%s%s@build" % (str(apps[0]["build_flavor"]).lower(), ("x%d" % len(apps)) if len(apps) > 1 else ""))
-    src = {v.get("provider"): v.get("price_source") for v in services().values() if v.get("provider")}
-    unpriced = []
+        orgs.append("main" if any((ap.get("org") or "main") != "secondary" for ap in apps) else "secondary")
+    src = _price_sources()
     for ad in spec.get("addons") or []:
         if ad.get("component") in without:
             continue
         ps = src.get(ad.get("provider"))
         if ps == "cellar":
             items.append("cellar:storage")
+            orgs.append(ad.get("org") or "main")
         elif ps:
             items.append("%s:%s" % (ps, str(ad["plan"]).lower()))
-        else:
-            unpriced.append(ad.get("name"))
+            orgs.append(ad.get("org") or "main")
     try:
-        sys.path.insert(0, os.path.dirname(a_scripts_dir()))
-        import price as pricemod
-        q = pricemod.quote(zone, items, 5)
+        q = _pricemod().quote(zone, items, 5)       # raises when the grid is unreachable or holds no application price
     except Exception as exc:     # grid unreachable: no price, said so
-        return None, "price NOT recomputed (grid unavailable: %s): no yes on an unknown price" % type(exc).__name__
-    q["unpriced_addons"] = unpriced
+        return None, "price NOT recomputed (grid unavailable: %s): no yes on an unknown price" % type(exc).__name__, orgs
     q["read_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    return q, None
+    return q, None, orgs
 
 
 HINT_RX = re.compile(r"git add \.|git commit -m|git push clever|Your application has been successfully created", re.I)
@@ -461,6 +560,16 @@ def reuse_existing(s, a, ledger):
     return 0
 
 
+def default_domain_rm(repo, alias):
+    """`clever domain rm <default domain> --alias <alias>`: the default domain of an app is app-<uuid>.cleverapps.io (seen in tests T1 and T5), the uuid being the one in
+    .clever.json; when the file does not give it, a placeholder."""
+    dom = "<default domain>"
+    for x in clever_json_apps(repo):
+        if x.get("alias") == alias and isinstance(x.get("app_id"), str) and APP_ID_RX.match(x["app_id"]):
+            dom = "app-%s.cleverapps.io" % x["app_id"][4:]
+    return "clever domain rm %s --alias %s" % (shlex.quote(dom) if dom[0] != "<" else dom, alias)
+
+
 def next_steps(r, a):
     """The exact next commands, from the repository state (shallow or not) and the deploy order."""
     out = subprocess.run(["git", "-C", a.repo, "rev-parse", "--is-shallow-repository"], stdout=subprocess.PIPE,
@@ -471,7 +580,7 @@ def next_steps(r, a):
         return subprocess.run(["git", "-C", a.repo] + list(args), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL).stdout.decode().strip()
     # #7: say what is TRUE of the repository, never assume the branch exists
     if not g("rev-parse", "--verify", "-q", "clever-poc"):
-        state = "branch clever-poc does not exist yet: create it and commit the plan's changes first (SKILL.md step 5)"
+        state = "branch clever-poc does not exist yet: create it and commit the plan's changes first (SKILL.md step 6a)"
     else:
         base = next((b for b in ("main", "master", "trunk") if g("rev-parse", "--verify", "-q", b)), None)
         ahead = g("rev-list", "--count", "%s..clever-poc" % base) if base else ""
@@ -486,8 +595,24 @@ def next_steps(r, a):
         lines.append("  # (no git identity: git -c user.name=\"Clever POC\" -c user.email=clever-poc@localhost commit-tree …)")
     for al in r.get("deploy_order") or []:
         lines.append("  bash %s --alias %s%s" % (shlex.quote(dep), al, " --branch clever-poc-deploy" if shallow else ""))
-    lines.append("  then prove.sh for each app (plan.json → components[].prove)")
+    lines.append("  then prove.sh for each app (plan.json → components[].prove; a beat app has no domain: give prove.sh the web app's)")
+    singles = [al for al in r.get("deploy_order") or [] if al in (r.get("singleton_aliases") or [])]
+    if singles:
+        # a beat / scheduler app republishes the web app's routes on its own default domain, and nothing serves users from it; removing that domain is IRREVERSIBLE:
+        # asked first, never part of the sequence above
+        lines.append("Ask the developer first — IRREVERSIBLE, run only after an explicit yes (not part of the sequence above):")
+        for al in singles:
+            lines.append("  %s    # nothing serves users from %s (it runs a scheduler): list its domain with `clever domain --alias %s`" % (default_domain_rm(a.repo, al), al, al))
+            lines.append("    %s" % scheduler_domain_note(r, al))
     return lines
+
+
+def scheduler_domain_note(r, alias):
+    """What the developer is told before the yes on a scheduler app's domain removal: it cannot be undone, and what a no leaves."""
+    paths = [p_ for p_ in (r.get("env_route_paths") or []) if isinstance(p_, str) and ROUTE_PATH_RX.match(p_)]
+    return ("%s; declined: %s stays reachable on its default domain, serving the web app's routes%s" % (
+        DEFAULT_DOMAIN_GONE, alias, (", the route that returns the environment (%s) included — the web app's proof checks it there (prove.sh --expect-closed): "
+                                     "NOT PROVEN while it answers" % ", ".join(paths)) if paths else ""))
 
 
 def execute(r, a):
@@ -588,6 +713,9 @@ def human(r, approved):
                         tag += "\n      %s!! %s%s" % (red, pb, end)
         tag += " [org %s]" % s["org"] if s.get("org") == "secondary" else ""
         L.append("%2d. %s%s" % (i, " ".join(shlex.quote(c) for c in cmd), tag))
+    for al in r.get("singleton_aliases") or []:
+        L.append("ASK FIRST (IRREVERSIBLE, only after an explicit yes; not a step of this plan) — after the first deploy of %s (a scheduler app, deployed last): %s — nothing serves "
+                 "users from it. %s" % (al, r["domain_rm"][al], scheduler_domain_note(r, al)))
     if not r.get("plan_known", True):
         L.append("!! WARNING: this plan.json was not written by plan.py on this machine (sha256 unknown): it may come from the repository — "
                  "do not show it as the developer's plan; run plan.py again (--execute refuses it)")
@@ -596,13 +724,30 @@ def human(r, approved):
     p = r.get("price")
     if not p and r.get("price_note"):
         L.append(r["price_note"])
-    if p:
+    if p and r.get("price_missing"):
+        L.append("price INCOMPLETE: not in the price grid: %s — a missing item is never counted as free, so no price and no approval token are issued and --approve is refused. "
+                 "Confirm those items in the Console, or run plan.py again" % ", ".join(r["price_missing"]))
+    elif p:
         L.append("price (%s by provision.py at %s, from the commands above — never from plan.json): %.4f EUR/h running · 2 h ≈ %.2f EUR · ~%.2f EUR/month if never stopped · builds ≈ %.3f EUR each" % (
             "OFFLINE saved grid, TESTS ONLY, read" if p.get("offline_grid") else "grid read", p.get("read_at", "an unknown time"), p["run_eur_per_hour"], p["poc_2h_eur"], p["run_eur_per_month_if_never_stopped"], p["build_eur_per_build"]))
-    if not approved:
+    if p and r.get("price_hds_line") and not r.get("price_missing"):
+        L.append(r["price_hds_line"])
+    if r.get("price_unpriced"):          # the price above and the token exist only with a complete price (R6): never promised without them
+        priced = bool(p) and not r.get("price_missing") and not r.get("price_unavailable") and bool(r.get("approval_token") or approved)
+        L.append("NOT PRICED (no public grid price): %s — %s" % (", ".join(r["price_unpriced"]),
+                 "billed on top of the price above, confirm in the Console; the approval token covers exactly this list" if priced else
+                 "billed on top of any price, confirm in the Console (no complete price here, so no approval token)"))
+    if r.get("price_unavailable"):
+        L.append("prices unavailable (grid unreachable): no price and no approval token are issued, and --approve is refused — no yes on an unknown price. "
+                 "Run the dry run again when the price grid answers")
+    elif r.get("price_missing"):
+        pass                                  # said above, with the items
+    elif not approved:
         L.append("approval token: %s — a CONSISTENCY check, not a proof of consent: it binds these commands, the price above (recomputed here), "
                  "the skill's scripts and rules, and the verified state of reused add-ons. Show this list and price to the developer; only after their "
-                 "explicit yes naming plan and price, run again with --approve %s" % (r["approval_token"], r["approval_token"]))
+                 "explicit yes naming plan and price%s, run again with --approve %s%s" % (
+                     r["approval_token"], " (in an HDS zone: the HDS price line above)" if r.get("price_hds_line") else "", r["approval_token"],
+                     " (this dry run used --no-live: --approve is refused with it outside the selftest — run the dry run again without --no-live)" if r.get("no_live") else ""))
     return "\n".join(L)
 
 
@@ -635,9 +780,15 @@ def main(argv):
             ", ".join(tracked), TRACKED_STATE_ADVICE))
     r = build(plan, a)
     approved = bool(a.approve)
+    if approved and r["price_unavailable"]:
+        refuse("prices unavailable (grid unreachable): no approval token can be issued on an unknown price, so nothing is provisioned — "
+               "run the dry run again when the price grid answers, show the price, and ask again")
+    if approved and r["price_missing"]:
+        refuse("price incomplete (not in the price grid: %s): a missing item is never counted as free, so no approval token can be issued and nothing is "
+               "provisioned — confirm those items in the Console, run plan.py again, show the price, and ask again" % ", ".join(r["price_missing"]))
     r["plan_known"] = known_plan(a.repo, a.plan)
     pp, q = r.get("plan_price") or {}, r.get("price") or {}
-    if pp.get("run_eur_per_hour") is not None and q.get("run_eur_per_hour") is not None:
+    if not r["price_missing"] and pp.get("run_eur_per_hour") is not None and q.get("run_eur_per_hour") is not None:        # a partial quote gives no gap figure
         gap = abs(float(pp["run_eur_per_hour"]) - float(q["run_eur_per_hour"]))
         if gap > max(0.0005, 0.02 * float(q["run_eur_per_hour"])):
             r["price_gap"] = "the plan says %.4f EUR/h, the commands it would run cost %.4f EUR/h on the grid" % (float(pp["run_eur_per_hour"]), float(q["run_eur_per_hour"]))
@@ -648,18 +799,22 @@ def main(argv):
     # É1: provision trusts only a plan.json that plan.py wrote on this machine (sha256 recorded in .git/)
     if a.execute and not r["plan_known"] and not selftest_mode("--execute of a plan.json plan.py did not write"):
         refuse("%s was not written by plan.py on this machine (its sha256 is unknown: it came with the repository, or was edited): "
-               "run plan.py again, show its Vision, then the dry run" % a.plan)
+               "run plan.py again, show its screens, then the dry run" % a.plan)
+    # --no-live skips the price AND the checks on existing apps and reused add-ons: a dry-run convenience, never a way to approve
+    if (approved or a.execute) and a.no_live and not selftest_mode("--approve with --no-live"):
+        refuse("--no-live is for dry runs only: it skips the price and the checks on existing apps and reused add-ons, so --approve is refused with it "
+               "— run the dry run without --no-live, show the price, and ask again")
     if approved and a.approve != r["approval_token"]:
         refuse("approval token mismatch: the commands, the plan's price, the skill's scripts or a reused add-on's state changed since the dry run — run the dry run again, show it, and ask again")
     unread = [s for s in r["steps"] if (s.get("reuse") or {}).get("verify") and s["reuse"]["verify"].get("ok") is None]
     if a.execute and unread and not a.accept_unverified_reuse:
         refuse("reused add-on(s) could not be verified (%s): %s — this is NOT a mismatch, so --accept-reused-mismatch does not apply. "
                "Check them (clever addon list --org <org>, the Console), then re-run with --accept-unverified-reuse only after the developer accepts "
-               "an add-on whose plan, zone or encryption is unverified (and say it in the Vision: never 'encrypted')" % (
+               "an add-on whose plan, zone or encryption is unverified (and say it on the compatibility screen: never 'encrypted')" % (
                    ", ".join(s["id"] for s in unread), "; ".join(s["reuse"]["verify"].get("why", "") for s in unread)))
     bad = [s for s in r["steps"] if ((s.get("reuse") or {}).get("verify") or {"ok": True}).get("ok") is False]
     if a.execute and bad and not a.accept_reused_mismatch:
-        refuse("reused add-on(s) differ from the plan (%s): %s — delete/rename them or re-run with --accept-reused-mismatch after the developer accepts (and say it in the Vision)" % (
+        refuse("reused add-on(s) differ from the plan (%s): %s — delete/rename them or re-run with --accept-reused-mismatch after the developer accepts (and say it on the compatibility screen)" % (
             ", ".join(s["id"] for s in bad), "; ".join(p_ for s in bad for p_ in (s["reuse"]["verify"].get("problems") or [s["reuse"]["verify"].get("why", "")]))))
     if a.execute:
         if not approved:

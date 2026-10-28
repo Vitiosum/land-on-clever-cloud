@@ -10,7 +10,7 @@
 # tracked .env files (names only), existing .clever.json link, .clever-landing/ git-excluded,
 # .clever-landing/ or .clever.json tracked by git (BLOCK: the skill's state must not come from the repo).
 # --health sets the path: yes/unsure → HDS (parhds, prerequisites shown first), no → par.
-# Without --health it ends with the one question to ask before anything else.
+# Without --health it ends with the health question, which belongs to screen 2 (questions.py), not to now.
 # Lines: OK / WARN / BLOCK / GATE / ASK. Exit 0 green, 1 blocked, 10 ok but the DEPLOY is gated
 # (shallow clone: survey, plan and provisioning can go on; apply the fix before clever deploy).
 
@@ -88,11 +88,11 @@ rm -f "$RES.err"
 
 # 3. the one question that comes before everything else
 case "$HEALTH" in
-  "") say ASK health "Does this app store or process health data (or might it later)? yes / no / not sure — it decides the zone (par or parhds) before any proposal" ;;
+  "") say ASK health "health data? (yes / no / not sure) — not now: it is the first question of screen 2 (questions.py), with the HDS contract; it decides the target zone (parhds for yes / not sure, the POC in par with synthetic data until the contract is signed)" ;;
   no) say OK zone "non-HDS path: zone par (Paris). Nothing about health in the proposal." ;;
   yes|unsure)
-    say OK zone "HDS path: zone parhds (Paris first; rbxhds/grahds only as a motivated alternative). ${HEALTH:+$( [ "$HEALTH" = unsure ] && echo 'Not sure → parhds from day one: changing zone later is a migration.')}"
-    say OK hds_prereq "before any proposal: (1) an HDS contract signed with Clever Cloud, attached to an organisation — the zone alone is not compliance; (2) only services available in the zone are proposed (plan.py reads them live); (3) databases created encrypted at rest, never on the DEV plan; (4) optional second non-HDS organisation only for components with no health data (internal doctrine, to be confirmed by Clever Cloud; validated by Clever legal + the customer's DPO)" ;;
+    say OK zone "HDS path: target zone parhds (Paris HDS, the only HDS zone proposed); the POC runs in par with synthetic data until an HDS contract is declared signed, then in parhds. ${HEALTH:+$( [ "$HEALTH" = unsure ] && echo 'Not sure → parhds as the target from day one: changing zone later is a migration.')}"
+    say OK hds_prereq "before real health data: (1) an HDS contract signed with Clever Cloud, attached to an organisation — the zone alone is not enough; (2) only services available in parhds go to the HDS organisation (plan.py reads them live); the others, and Keycloak (extra billing in HDS), go to a second, non-HDS organisation in par, with no health data in it; (3) databases created encrypted at rest, never on the DEV plan" ;;
 esac
 
 if [ "$JSON" -eq 1 ]; then

@@ -120,11 +120,11 @@ so `dev`. Always pass `--plan`.
 | `xxxl_*` · `4xl_*` · `5xl_*` · `6xl_*` | 1200 · 1500 · 1800 · 2100 | | same |
 
 **Smallest dedicated plan: `xxs_tny`** (45 connections, 512 MB, daily
-backups kept 7 days, `encryption` option), ≈ €4.97/month
-(€0.0068/h, grid of 2026-10-25) against €0.0073/h for `xxs_sml`: the
+backups kept 7 days, `encryption` option), ≈ €4.90/month
+(720-hour month; €0.0068/h, grid of 2026-10-25) against €0.0073/h for `xxs_sml`: the
 floor of an encrypted POC, where `dev` is neither encryptable nor backed up.
-`modules/supabase/templates/deploy-target.sh` keeps `xxs_sml` by default (standard
-size of the Clever demos); `PG_PLAN=xxs_tny` for the floor. The plan and the price
+`modules/supabase/templates/deploy-target.sh` has no default plan: `PG_PLAN` is the plan
+the go named (plan.json's PostgreSQL plan, sized on the data × 2). The plan and the price
 show in the dry run: price read live by `<skill>/scripts/price.py`, bound to the
 plan by the approval token of `<skill>/scripts/lib/approval.py` (`--approve <token>`).
 
@@ -150,9 +150,9 @@ option on Redis and MySQL.
 | Add-on | Replaces | Verified limits |
 |---|---|---|
 | **PostgreSQL** | the Supabase database | no superuser; roles, PITR and replicas **on request to support**; see §0 and §1 |
-| **Cellar** (S3) | Storage | one key gives access to **all** the buckets of the add-on. A second add-on is used to give a **restricted** access (e.g. read-only) through a bucket policy whose `Principal` is its ADDON ID; it does not restrict the keys of the first one. Pre-signed URLs, ACLs, bucket policies, CORS. HDS zones: `parhds`, `rbxhds` (not `grahds`) |
+| **Cellar** (S3) | Storage | one key gives access to **all** the buckets of the add-on. A second add-on is used to give a **restricted** access (e.g. read-only) through a bucket policy whose `Principal` is its ADDON ID; it does not restrict the keys of the first one. Pre-signed URLs, ACLs, bucket policies, CORS. HDS: `parhds` (the only HDS zone this skill proposes) |
 | **Pulsar** | `pgmq` | **single `beta` plan**, `par` and `parhds` only: to flag before replacing `pgmq` in production. Biscuit tokens; infinite retention by default, Cellar offload disabled by default |
-| **Keycloak** | GoTrue | **no HDS zone**. Console on `/admin`, credentials through `CC_KEYCLOAK_ADMIN` and `CC_KEYCLOAK_ADMIN_DEFAULT_PASSWORD` |
+| **Keycloak** | GoTrue | possible in HDS but billed extra: **never recommended there**; in an HDS project it goes to a second, non-HDS organisation (decision of 2026-10-26). Console on `/admin`, credentials through `CC_KEYCLOAK_ADMIN` and `CC_KEYCLOAK_ADMIN_DEFAULT_PASSWORD` |
 | **Redis** | cache | `CONFIG` and `CLUSTER` forbidden; modules and backup settings (daily, 7 days) on request to support; `encryption` option at creation |
 | **Materia KV** | small shared state | **beta**, zone `par` only: 128 MB per add-on, 5 MB per value, 10 MB per transaction, and the docs **explicitly advise against sensitive or production data**. No HDS zone |
 | **CKE** (Kubernetes) | the whole stack | **public beta, Paris, outside HDS**. Vanilla Kubernetes; block storage through CSI (Ceph/RBD), enabled at creation (`clever k8s create --persistent-storage`) or later (`clever k8s add-persistent-storage`) — one-way activation |
@@ -260,7 +260,7 @@ Three documented restrictions, and two that matter:
    `cron-job.sh`, copied into `clevercloud/`. `CC_PRE_RUN_HOOK="bash clevercloud/cron-env.sh"`
    writes at start the variables listed in `CRON_VARIABLES` (e.g.
    `CRON_VARIABLES="API_SERVICE_TOKEN"`), plus `INSTANCE_NUMBER`, `PORT`,
-   `CRON_BASE_URL` and `CRON_TOKEN_VAR`, into `clevercloud/.cron-env` (mode `600`,
+   `CRON_BASE_URL`, `CRON_TOKEN_VAR` and `CRON_RUNS_HERE` (`1` on the one app that runs the jobs: `cron-job.sh` skips the job, exit 0, on any other app built from the repository), into `clevercloud/.cron-env` (mode `600`,
    ignored by git), which `cron-job.sh` sources. `cron-job.sh POST /tasks/<name>`
    runs on instance 0 only, calls `CRON_BASE_URL` (e.g. the internal API URL;
    default `http://127.0.0.1:$PORT`) with the token of the variable named by

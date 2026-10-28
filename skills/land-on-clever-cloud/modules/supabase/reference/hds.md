@@ -33,7 +33,7 @@
 
 **What is false and still circulates** (to be fixed in any sales material):
 
-1. **"Three HDS zones"** — the platform API returns four with the `contract:hds` tag: `parhds`, `grahds`, `rbxhds` and `fr-north-hds` (https://api.clever-cloud.com/v4/products/zones). Only three are open to application deployment through the CLI.
+1. **"Three HDS zones"** — the platform API returns four with the `contract:hds` tag: `parhds`, the two OVHcloud zones of Gravelines and Roubaix, and `fr-north-hds` (https://api.clever-cloud.com/v4/products/zones). Only three are open to application deployment through the CLI. This skill proposes `parhds` only.
 2. **"Clever Cloud certified HDS v2.1"** — false as of 14 August 2026. The certificate reads "HDS - V2", the ANS lists Clever Cloud under "version 2.0", and v2.1 is not published. The pages clever.cloud/health-data-hosting and /fr/hebergement-donnees-de-sante show it wrongly (certificate PDF vs marketing pages).
 3. **"HDS requires encryption at rest"** — false. Zero occurrence of « au repos » (at rest) in the v2.0 framework (HDS certification framework v2.0, 31 requirements).
 4. **"HDS requires MFA"** — false. Zero occurrence of « multifacteur », « authentification forte », « MFA » in the v2.0 framework.
@@ -55,9 +55,8 @@
 
 | Zone | `contract:hds` tag | CLI application deployment | Infra |
 |---|---|---|---|
-| `parhds` | yes | yes | Clever Cloud, Paris (TH2, nLighten) |
-| `grahds` | yes | yes | OVHcloud, Gravelines |
-| `rbxhds` | yes | yes | OVHcloud, Roubaix |
+| `parhds` | yes | yes | Clever Cloud, Paris (TH2, nLighten) — the only HDS zone this skill proposes |
+| the two OVHcloud HDS zones | yes | yes | OVHcloud, Gravelines and Roubaix — never proposed by this skill; a client who needs one changes the zone himself |
 | `fr-north-hds` | yes | **no** (no `for:applications` tag) | OVHcloud, France North |
 | `par`, `scw`, `ldn`, `mtl`, `rbx`, `sgp`, `syd`, `wsw` | no | yes | outside the HDS scope |
 
@@ -108,7 +107,7 @@ Only the points of nature `regulatory_obligation`, confirmed or confirmed with n
 | Obligation to log | Art. 32 GDPR + R. 1111-9 CSP | The obligation to log is binding. Only the **duration** is free on the HDS side. |
 | Electronic identification of healthcare actors | Order of 28 March 2022 (JORFTEXT000045457991), art. L. 1470-2 and L. 1470-5 CSP, in force since 01/06/2022, original version still in force | Falls on the **provider of the digital health service / data controller**, not on the hosting provider. For "sensitive" services: Pro Santé Connect, CPx cards, approved MIE (electronic identification means), or MIE certified eIDAS substantial or high (EXI 03). **Two-factor transitional MIE are no longer allowed since 31/12/2025.** For non-sensitive services, these are only recommendations (§ 4.1.3). |
 | Retention of medical records | R. 1112-7 CSP, version in force since 01/03/2018 (LEGIARTI000036658351) | 20 years from the last visit, extended up to the patient's 28th birthday, reduced to 10 years from death if death occurs less than 10 years after the last visit, periods suspended by any appeal that challenges medical liability. **Falls on the healthcare facility, not on the hosting provider** — but sizes the application traces. |
-| Encryption at rest — health data warehouses | SEC-LOG-2, CNIL data-warehouse framework (deliberation no. 2021-118 of 07/10/2021, corrected by no. 2021-123 of 02/11/2021) | "Personal data must be encrypted at rest with algorithms and key sizes compliant with appendix B1 of the RGS. An operational key-management procedure must be formalised." **Conditional on the procedural route**: it applies on the declaration-of-conformity route; point 2.3 opens a specific authorisation request (art. 66 III of the French Data Protection Act, LIL) that allows defending alternative measures. **Narrower scope than common language**: excludes warehouses based on private legitimate interest, care processing by health professionals, processing based on explicit consent, and warehouses matched with the SNDS (points 1.3 and 2.6). |
+| Encryption at rest — health data warehouses | SEC-LOG-2, CNIL data-warehouse framework (deliberation no. 2021-118 of 07/10/2021, corrected by no. 2021-123 of 02/11/2021) | Personal data must be encrypted at rest with the algorithms and key sizes of appendix B1 of the RGS, and an operational key-management procedure must be formalised (paraphrased). **Conditional on the procedural route**: it applies on the declaration-of-conformity route; point 2.3 opens a specific authorisation request (art. 66 III of the French Data Protection Act, LIL) that allows defending alternative measures. **Narrower scope than common language**: excludes warehouses based on private legitimate interest, care processing by health professionals, processing based on explicit consent, and warehouses matched with the SNDS (points 1.3 and 2.6). |
 | Warehouse cryptography, beyond rest | SEC-LOG-3, SEC-LOG-4, SEC-LOG-6, SEC-RES-3 — CNIL data-warehouse framework | Encrypted backups (RGS appendix B1); **separate keys** for directly identifying data and correspondence tables; **a specific key** for genetic or location-tracking data; encryption of all incoming, outgoing **and internal** flows. Volume encryption or a managed service's "encryption at rest" does **not** satisfy SEC-LOG-4 or SEC-LOG-6. |
 | SNDS traces | Order of 6 May 2024, SNDS security framework, chapter 7.2 (JORFTEXT000049516244), repeals the order of 22 March 2017 | The only log duration actually imposed by a text: "Traces must be kept for a period of 6 months." |
 
@@ -176,11 +175,11 @@ A section to handle at design time (phase 4 of `modules/supabase/GUIDE.md`), not
 
 ### 1. Zone choice: at creation, on every resource
 
-The choice is made at `clever create --region` **and** at every `clever addon create --region`: both commands default to `par`. `par` is **not** HDS, despite Paris datacenters shared with `parhds` and shared outbound IPs. Only three zones are open to application deployment: `parhds`, `grahds`, `rbxhds`.
+The choice is made at `clever create --region` **and** at every `clever addon create --region`: both commands default to `par`. `par` is **not** HDS, despite Paris datacenters shared with `parhds` and shared outbound IPs. Three HDS zones are open to application deployment: `parhds` and the two OVHcloud zones (Gravelines, Roubaix).
 
-**`parhds` by default and recommended** (Clever Cloud recommendation: best performance in Paris, Cellar in particular). `rbxhds` and `grahds`, hosted by OVHcloud in Roubaix and Gravelines, are only offered as an alternative driven by a client reason (multi-site DR, choice of hosting provider) — and `grahds` has no Cellar.
+**`parhds` is the only HDS zone this skill proposes** (Clever Cloud recommendation: best performance in Paris, Cellar in particular). The two OVHcloud HDS zones are never proposed: a client who needs one (multi-site DR, choice of hosting provider) changes the zone himself, after checking the add-on gaps below (the Gravelines one has no Cellar).
 
-A zone error is not final but it costs: zone migration (console then redeploy for an app, PHP to recreate; Migration Tool for PostgreSQL, MySQL, MongoDB, Redis; support for Cellar and Pulsar; FS Bucket cannot be migrated — https://www.clever.cloud/developers/doc/manage/zone-migration/), with downtime, and with no documented guarantee towards an HDS zone. **Until it is done, compliance is broken.**
+A zone error is not final but it costs: zone migration (console then redeploy for an app, PHP to recreate; Migration Tool for PostgreSQL, MySQL, MongoDB, Redis; support for Cellar and Pulsar; FS Bucket cannot be migrated — https://www.clever.cloud/developers/doc/manage/zone-migration/), with downtime, and with no documented guarantee towards an HDS zone. **Until it is done, the resource is outside the certified scope.**
 
 Zones to exclude for any use touching health data, including ancillary use, in anticipation of R. 1111-9-1 (26/09/2026): `mtl` (Canada), `sgp` (Singapore), `syd` (Sydney), and **`ldn` (United Kingdom — outside the EEA since Brexit)**. `wsw` (Warsaw) is in the EEA but outside the HDS scope.
 
@@ -192,27 +191,28 @@ This is the most structuring constraint and the least anticipated. Source: `clev
 |---|---|
 | Application (all runtimes, Docker) | The three application HDS zones |
 | PostgreSQL, MySQL, Redis, Elastic | The three application HDS zones |
-| Cellar | `parhds`, `rbxhds`, `fr-north-hds` — **not `grahds`** |
-| Metabase, Otoroshi, Jenkins | `rbxhds`, `grahds` — **not `parhds`** |
+| Cellar | `parhds`, `fr-north-hds` and the Roubaix OVHcloud zone — **not the Gravelines one** |
+| Metabase, Otoroshi, Jenkins | the two OVHcloud HDS zones — **not `parhds`** |
 | Pulsar, config-provider | `par` / `parhds` only |
 | **fs-bucket** | **No HDS zone** — no shared POSIX file storage, plan for Cellar |
-| **Keycloak, MongoDB, Matomo, Materia KV, MailPace, Azimutt** | **No HDS zone** |
+| **Keycloak** | possible in HDS but billed extra: **never recommended there** (second, non-HDS organisation) |
+| **MongoDB, Matomo, Materia KV, MailPace, Azimutt** | **No HDS zone** |
 | **Clever Kubernetes (CKE)** | **No HDS zone**: public beta, three datacenters in Paris, no zone option in `clever k8s create`, no HDS mention in the docs |
 
 Available in an HDS zone does not mean included in the certified scope: **the scope is confirmed with Clever Cloud, in the contract** (certificate annex, Q2 below).
 
-Design consequences: a health architecture must be designed **around these gaps** from the start, or move the missing components out of HDS with an explicit, documented data boundary. The Keycloak case is particularly treacherous: IAM is often laid down as a base component and exists in no HDS zone.
+Design consequences: a health architecture must be designed **around these gaps** from the start, or move the missing components out of HDS with an explicit, documented data boundary. The Keycloak case is particularly treacherous: IAM is often laid down as a base component, and Keycloak, billed extra in HDS, is never recommended there.
 
-**Architecture option: two organisations.** The HDS contract and licence are attached to a Clever Cloud organisation. Components that process **no health data** can live in a **second, non-HDS organisation** (zone `par`), with no HDS licence or coefficient (internal doctrine noted in pre-sales meeting reports, **to be confirmed by Clever Cloud before presenting it as settled**). The HDS organisation (`parhds`) keeps the application and everything that stores or carries health data. To be offered when the client needs a service absent from the HDS zones, with a boundary documented service by service:
+**Architecture: two organisations, the default for what needs no HDS** (decision of 2026-10-26). The HDS contract is attached to a Clever Cloud organisation. Components that process **no health data** (Keycloak, preproduction, tools, a service absent from `parhds`) go, by default, to a **second, non-HDS organisation** (zone `par`), outside the HDS contract. The HDS organisation (`parhds`) keeps the application and everything that stores or carries health data. Each service comes with its boundary, documented service by service (the root skill's table: `<skill>/reference/zones.md` §Two organisations):
 
 | Service in the non-HDS organisation | Condition for it to stay there |
 |---|---|
 | MailPace (transactional emails) | no health content in the emails (no result, reason or date of care); link to the HDS app only |
 | Matomo (audience measurement) | no health data or patient identifier in URLs, titles or events; anonymised IPs |
 | Materia KV, Azimutt, internal tools | no health data, neither in clear nor in cache |
-| Keycloak (identities) | **at risk**: the identity of a user of a health app can reveal health information. Only after written validation by Clever's legal team and the client's DPO; otherwise authentication in the application, in the HDS zone |
+| Keycloak (identities) | identity data only: no health data in user attributes, tokens or claims (the identity of a user of a health app can itself reveal health information: the client's DPO checks it); otherwise authentication in the application, in the HDS zone |
 
-The module **never rules on** the compliance of this split: it offers it as an option, describes the boundary, and sends the validation to Clever Cloud's legal team and the client's DPO (internal rule: every HDS compliance question goes to legal).
+The module **never qualifies** this split: it places it by default, describes the boundary, and the client's DPO checks it; every HDS legal question goes to Clever Cloud (the contact request's "To prepare for the HDS meeting").
 
 Contradiction not resolved: the Clever Cloud guarantees page cites MongoDB and Cassandra among the covered services, while the CLI offers MongoDB in no HDS zone.
 
@@ -221,14 +221,14 @@ Contradiction not resolved: the Clever Cloud guarantees page cites MongoDB and C
 From 26 September 2026 (R. 1111-9-1), all storage resulting from a hosting activity must be exclusively in the EU/EEA. To audit explicitly, each element being an independent breaking point:
 
 - region of the managed databases and volumes;
-- **replication region** — a bucket or object storage whose redundancy leaves the EEA is non-compliant even if the primary region is European;
+- **replication region** — a bucket or object storage whose redundancy leaves the EEA breaks the requirement even if the primary region is European;
 - destination region of backups, exports, snapshots;
 - cold archive storage;
 - logs containing health data;
 - acceptance / test environments;
 - second-tier subcontractors.
 
-The most often missed point: an architecture compliant in production whose backups land outside the EEA is non-compliant, since backup and archiving are covered by the reference of R. 1111-9-1 to 6° of R. 1111-9.
+The most often missed point: an architecture that meets the requirement in production but whose backups land outside the EEA does not meet it, since backup and archiving are covered by the reference of R. 1111-9-1 to 6° of R. 1111-9.
 
 ### 4. Remote operations access = transfers
 
@@ -258,7 +258,7 @@ A proprietary export, an undocumented dump or a return billed "on quote" with no
 
 ### 7. Multi-region HDS: check add-on by add-on before promising a DR plan
 
-`parhds` + `rbxhds` or `grahds` is possible for resilience. Check that **every** add-on of the plan exists in both zones before any DR commitment — see the gaps table above (Cellar missing from `grahds`, Metabase and Jenkins missing from `parhds`).
+This skill proposes `parhds` alone; a second HDS zone for resilience is the client's own choice. Before any DR commitment, check that **every** add-on of the plan exists in both zones — see the gaps table above (Cellar missing from the Gravelines OVHcloud zone, Metabase and Jenkins missing from `parhds`).
 
 ### 8. Encryption with separate keys if in the warehouse scope
 
@@ -268,7 +268,7 @@ This is designed at the application level or with separate instances and key set
 
 ### 9. Certification boundary to document from pre-sales
 
-On Clever Cloud: the PaaS and the managed add-ons covered by the contract (scope to read in the certificate annex, not to assume) fall to the hosting provider; **the application deployed on it does not fall under its certification**. What stays with the client: application code, management of application identities and permissions, application-level encryption, business logs, GDPR compliance of the processing (legal basis, retention periods, DPIA, informing data subjects, exercise of rights).
+On Clever Cloud: the PaaS and the managed add-ons covered by the contract (scope to read in the certificate annex, not to assume) fall to the hosting provider; **the application deployed on it does not fall under its certification**. What stays with the client: application code, management of application identities and permissions, application-level encryption, business logs, the GDPR obligations of the processing (legal basis, retention periods, DPIA, informing data subjects, exercise of rights).
 
 Deliverable to produce from pre-sales (EXI 13), covering at least: access and permission management, encryption in transit and at rest, backups and restore, logging and retention of traces, vulnerability and patch management, incident response and breach notification, reversibility. This document is attached to the contract, it does not replace it.
 
@@ -276,7 +276,7 @@ Deliverable to produce from pre-sales (EXI 13), covering at least: access and pe
 
 Never write "our HDS hosting guarantees strong authentication of health professionals". MFA / eIDAS substantial MIE is handled in the application, by the vendor or the healthcare facility, through Pro Santé Connect / e-CPS / CPx card (OIDC), and it is they who sign the commitment to secure electronic identification.
 
-**A calendar point not to miss in a 2026 quote**: two-factor transitional identification means are no longer allowed since 31 December 2025. A project that still plans "password + SMS OTP" for a sensitive service is non-compliant.
+**A calendar point not to miss in a 2026 quote**: two-factor transitional identification means are no longer allowed since 31 December 2025. A project that still plans "password + SMS OTP" for a sensitive service does not meet the requirement.
 
 ### 11. Binding geographical scope
 

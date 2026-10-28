@@ -16,6 +16,10 @@
 # - The job's environment is EMPTY: the variables come from clevercloud/.cron-env, written at
 #   start by cron-env.sh (CC_PRE_RUN_HOOK). Without that file, or without INSTANCE_NUMBER in it,
 #   the job stops with an error (visible in `clever logs --until now`) rather than run N times.
+# - clevercloud/cron.json is part of the code, so it is deployed to EVERY app built from the repository (a beat / scheduler app
+#   split from the web app, a second service…): the jobs run only on the app that carries CRON_RUNS_HERE=1 (set on that one app,
+#   copied to clevercloud/.cron-env by cron-env.sh). Elsewhere the job exits 0 with one line saying so — no error, nothing run.
+#   Without the marker nothing runs anywhere: set it on the designated app. The instance-0 rule below still applies on it.
 # - Zero-downtime deploys: for a few minutes the old and the new instance carry the same
 #   INSTANCE_NUMBER, so a job can run twice: make the task idempotent or locked
 #   (pg_try_advisory_lock on the API side), or disable zero-downtime.
@@ -44,6 +48,10 @@ fi
 # shellcheck source=/dev/null
 . "$VARS"
 
+if [[ "${CRON_RUNS_HERE:-}" != "1" ]]; then
+  echo "job skipped: this app is not the one that runs the cron jobs (CRON_RUNS_HERE=1 is set on that one app only)"
+  exit 0
+fi
 if [[ -z "${INSTANCE_NUMBER:-}" ]]; then
   echo "INSTANCE_NUMBER unknown: no deduplication possible, job refused (plan a lock in the database)" >&2
   exit 1
@@ -81,7 +89,7 @@ elif [[ "${CRON_NO_TOKEN:-}" != "1" ]]; then
   exit 1
 fi
 [[ "$METHOD" == POST ]] && ARGS+=(-H 'Content-Type: application/json' -d '{}')
-CODE="$(curl "${ARGS[@]}" "$BASE$ROUTE")" || CODE=000
+CODE="$(curl -q "${ARGS[@]}" "$BASE$ROUTE")" || CODE=000          # -q first: no ~/.curlrc (a --location there would change the answer)
 
 echo "$(date -u +%FT%TZ) $METHOD $ROUTE -> HTTP $CODE"
 head -c 500 "$OUT"; echo

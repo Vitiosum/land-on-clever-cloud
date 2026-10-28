@@ -1,10 +1,11 @@
 {
-  "_doc": "Backing services: how a datastore/tool seen in a repo maps to a Clever Cloud add-on. Zone availability is NEVER taken from here: plan.py reads it live (clever addon providers show <id> --format json) and falls back to rules/_zones.json only when the CLI cannot answer, saying so. 'two_org' = boundary condition for the optional second, non-HDS organisation (internal presales doctrine, to be confirmed by Clever Cloud; never a compliance statement).",
+  "_doc": "Backing services: how a datastore/tool seen in a repo maps to a Clever Cloud add-on. Zone availability is NEVER taken from here: plan.py reads it live (clever addon providers show <id> --format json) and falls back to rules/_zones.json only when the CLI cannot answer, saying so. 'two_org' = the boundary shown when a component runs in the second, non-HDS organisation (zone par): when the plan targets HDS, plan.py places there every service absent from parhds or marked 'hds': 'not_recommended' (the default recommendation, decision of 2026-10-26), --two-org overrides it. 'hds': 'not_recommended' + 'hds_reason' = possible in HDS but never recommended there. 'default_plan' of PostgreSQL and MySQL is used only when the catalogue cannot be read: a plan that holds the assumed 1 GB x2 (never the smallest plan by default); otherwise sizing.pick_db_plan() chooses from the live catalogue.",
   "services": {
     "postgresql": {
       "provider": "postgresql-addon",
       "price_source": "postgresql",
-      "default_plan": "xxs_tny",
+      "default_plan": "xxs_med",
+      "default_plan_note": "xxs_med: max DB size 2 GB, 512 MB RAM, 45 connections (catalogue read 2026-10-25), the assumed 1 GB x2; never xxs_tny (512 MB) by default",
       "dedicated": true,
       "encryption": true,
       "images": [
@@ -46,7 +47,8 @@
     "mysql": {
       "provider": "mysql-addon",
       "price_source": "mysql",
-      "default_plan": "xxs_sml",
+      "default_plan": "xxs_big",
+      "default_plan_note": "xxs_big: max DB size 2 GB, 512 MB RAM, 15 connections (catalogue read 2026-10-25), the assumed 1 GB x2; never xxs_sml (512 MB) by default",
       "dedicated": true,
       "encryption": true,
       "images": [
@@ -133,7 +135,10 @@
         "effort": "L",
         "detail": "no MongoDB in this zone: move the data model to PostgreSQL (JSONB) — a rewrite"
       },
-      "two_org": null
+      "two_org": {
+        "risk": "conditional",
+        "boundary": "no health data in it: MongoDB is not available in parhds; for health data, move the data model to PostgreSQL (JSONB) in parhds."
+      }
     },
     "elasticsearch": {
       "provider": "es-addon",
@@ -181,7 +186,7 @@
       "fallback_absent": {
         "target": "addon",
         "effort": "S",
-        "detail": "no Cellar in this zone: create Cellar in parhds (Paris first) or rbxhds, never outside HDS for health files"
+        "detail": "no Cellar in this zone: create Cellar in parhds (Paris HDS), never outside HDS for health files"
       },
       "two_org": null
     },
@@ -200,7 +205,10 @@
         "effort": "M",
         "detail": "no FS Bucket in this zone: write files to Cellar (S3 API) — a code change"
       },
-      "two_org": null
+      "two_org": {
+        "risk": "conditional",
+        "boundary": "no health files on it: FS Bucket is not available in parhds; for health files, Cellar in parhds with the files encrypted application-side."
+      }
     },
     "keycloak": {
       "provider": "keycloak",
@@ -225,9 +233,11 @@
         "effort": "L",
         "detail": "no Keycloak in this zone: authentication inside the app (in-app library), deployed in the HDS zone"
       },
+      "hds": "not_recommended",
+      "hds_reason": "extra billing; place it in a second, non-HDS organisation",
       "two_org": {
-        "risk": "at-risk",
-        "boundary": "AT RISK: a user's identity in a health app can itself reveal health information. Only after WRITTEN validation by Clever Cloud's legal team and the customer's DPO; default = in-app authentication in the HDS zone."
+        "risk": "conditional",
+        "boundary": "identity data only: no health data in user attributes, tokens or claims (a user's identity in a health app can itself reveal health information: ask the DPO)."
       }
     },
     "mail": {
@@ -346,9 +356,12 @@
       "fallback_absent": {
         "target": "docker",
         "effort": "M",
-        "detail": "no Metabase add-on in this zone: Metabase as a Docker app in the same zone, or rbxhds (motivated alternative)"
+        "detail": "no Metabase add-on in this zone: Metabase as a Docker app in the same zone"
       },
-      "two_org": null
+      "two_org": {
+        "risk": "conditional",
+        "boundary": "it reads the database it charts: only non-health data, or Metabase as a Docker app in parhds."
+      }
     },
     "pulsar": {
       "provider": "addon-pulsar",

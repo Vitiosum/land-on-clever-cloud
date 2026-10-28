@@ -4,7 +4,8 @@
   "snapshot_source": "clever addon providers show <id> --format json (clever-tools 5.2.0), 17 providers",
   "app_zones": ["par", "parhds", "grahds", "rbx", "rbxhds", "scw", "ldn", "mtl", "sgp", "syd", "wsw"],
   "hds_zones": ["parhds", "rbxhds", "grahds"],
-  "paris_first": {"non_hds": "par", "hds": "parhds", "motivated_alternatives": ["rbxhds", "grahds"]},
+  "paris_first": {"non_hds": "par"},
+  "hds_proposed": {"zone": "parhds", "doc": "the ONLY HDS zone the skill proposes or writes (decision of 2026-10-26), read by plan.py as its single source: the other HDS zones are recognised in hds_zones, never proposed; a customer who needs one changes it himself. The POC runs in par with synthetic data until an HDS contract is declared signed, then in parhds"},
   "providers": {
     "azimutt": ["par"],
     "cellar-addon": ["fr-north-hds", "par", "parhds", "rbxhds"],
@@ -25,7 +26,7 @@
     "redis-addon": ["grahds", "ldn", "mtl", "par", "parhds", "rbx", "rbxhds", "scw", "sgp", "syd", "wsw"]
   },
   "non_addon_services": {
-    "kubernetes": {"never_in": ["parhds", "rbxhds", "grahds"], "note": "Clever Kubernetes (CKE) is never available in an HDS zone (FAITS-VERIFIES 2026-10-24); BETA in clever-tools 5.2.0"}
+    "kubernetes": {"never_in": ["parhds", "rbxhds", "grahds"], "note": "Clever Kubernetes (CKE) is never available in an HDS zone (Clever Cloud, verified 2026-10-24); BETA in clever-tools 5.2.0"}
   },
   "price_grid_note": "On 2026-10-24 the public grid returned identical runtime prices for zone_id=par and zone_id=parhds; any HDS-specific cost is in the HDS contract, not in this grid."
 }

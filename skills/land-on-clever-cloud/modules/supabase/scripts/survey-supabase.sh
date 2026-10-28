@@ -314,7 +314,7 @@ http() {   # http <path> -> HTTP code, or null
   local c=""
   if [[ -n "${SUPABASE_URL:-}" && -n "${SUPABASE_PUBLISHABLE_KEY:-}" ]]; then
     key_header
-    c="$(curl -s -o /dev/null -w '%{http_code}' -H @"$KEY_HEADER" "${SUPABASE_URL%/}$1" 2>/dev/null || true)"
+    c="$(curl -q -s -o /dev/null -w '%{http_code}' -H @"$KEY_HEADER" "${SUPABASE_URL%/}$1" 2>/dev/null || true)"          # -q first: no ~/.curlrc
   fi
   if [[ "$c" =~ ^[1-5][0-9][0-9]$ ]]; then echo "$c"; else echo null; fi
 }
@@ -322,7 +322,7 @@ auth_settings() {
   local r=""
   if [[ -n "${SUPABASE_URL:-}" && -n "${SUPABASE_PUBLISHABLE_KEY:-}" ]]; then
     key_header
-    r="$(curl -sf -H @"$KEY_HEADER" "${SUPABASE_URL%/}/auth/v1/settings" 2>/dev/null || true)"
+    r="$(curl -q -sf -H @"$KEY_HEADER" "${SUPABASE_URL%/}/auth/v1/settings" 2>/dev/null || true)"
   fi
   if printf '%s' "$r" | python3 -I -c 'import json,sys; json.loads(sys.stdin.read())' 2>/dev/null; then
     printf '%s\n' "$r"

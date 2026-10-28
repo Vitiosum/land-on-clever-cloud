@@ -64,7 +64,7 @@
       },
       "release": {
         "target": "native",
-        "detail": "Django: CC_PYTHON_MANAGE_TASKS (runs at build); other stacks: CC_PRE_RUN_HOOK, idempotent (runs on every instance start)"
+        "detail": "Django: CC_PYTHON_MANAGE_TASKS (runs at build); other stacks: CC_POST_BUILD_HOOK (once per deploy, whatever the number of instances; CC_PRE_RUN_HOOK would run it on every instance)"
       }
     },
     "addon_map": {
@@ -84,7 +84,7 @@
   "traps": [
     "The production settings branch is gated on Heroku-only variables (DYNO): on Clever the app runs in local mode (ALLOWED_HOSTS local, SQLite) and answers 400 — which still PASSES the default health check (200-499).",
     "Heroku's Python buildpack runs collectstatic automatically; Clever does not: CC_PYTHON_MANAGE_TASKS=\"collectstatic --noinput\" (WhiteNoise manifest storage returns 500 otherwise).",
-    "release: phase → CC_PYTHON_MANAGE_TASKS runs during the build; with several instances anything in CC_PRE_RUN_HOOK runs on each.",
+    "release: phase → CC_PYTHON_MANAGE_TASKS runs during the build; other stacks: CC_POST_BUILD_HOOK, once per deploy — with several instances anything in CC_PRE_RUN_HOOK runs on each.",
     "Python version files (.python-version, runtime.txt): pin explicitly with CC_PYTHON_VERSION to an accepted version.",
     "Config vars: copy with env-safe.sh push from a file the dev exports (heroku config -s > .env.heroku, untracked); never paste in chat.",
     "DATABASE_URL: prefer reading POSTGRESQL_ADDON_URI in code (copied values do not follow credential rotation)."

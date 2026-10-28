@@ -1,5 +1,5 @@
 {
- "_doc": "Regression fixtures for the 16 'blanc' dry runs (ANALYSE-BLANC.md) and the local VM case (ECARTS-LOCAL.md): SMALL files written for these tests, modelled on the named public repositories (no file copied). selftest.sh builds each as a git repo, runs scan + plan offline, and checks the expected primary provenance, mode, verdict and Vision lines; it also checks that two runs give the same plan (determinism).",
+ "_doc": "Regression fixtures for 16 dry runs on public repositories and a local VM case: SMALL files written for these tests, modelled on the named public repositories (no file copied). selftest.sh builds each as a git repo, runs scan + plan offline, and checks the expected primary provenance, mode, verdict and Vision lines; it also checks that two runs give the same plan (determinism). Each fixture also states the production verdict (production_prefix), and may run with answers (\"answers\": answers.json for plan.py --answers, instead of --health no), check losses_has / losses_no, apps_native and target_zone, give an exact production verdict, and run \"variants\" (the same repository with other answers, e.g. --health no) with their own expectations; every plan must lose \"logs kept 7 days\" and never say compliant, conforme, rbxhds or grahds. \"has\" / \"no\" apply to what plan.py prints (the three screens) and to the detail of REPORT.md; \"read_first\" names the blocker screen 1 must show first (kubernetes: the /env route, which exposes the environment). \"go_without\" names the components the price screen's Reply may offer to leave out.",
  "fixtures": {
   "beanstalk": {
    "modelled_on": "aws-samples/eb-node-express-sample",
@@ -24,7 +24,8 @@
      "SNS / SQS",
      "static files served by Elastic Beanstalk"
     ],
-    "primary": "beanstalk-amplify"
+    "primary": "beanstalk-amplify",
+    "production_prefix": "not assessed — report only"
    }
   },
   "cloudflare": {
@@ -49,7 +50,8 @@
      "request.cf",
      "Worker bindings"
     ],
-    "primary": "cloudflare"
+    "primary": "cloudflare",
+    "production_prefix": "not assessed — report only"
    }
   },
   "digitalocean": {
@@ -75,7 +77,8 @@
      "APP_KEY value committed",
      "build and run commands"
     ],
-    "primary": "digitalocean"
+    "primary": "digitalocean",
+    "production_prefix": "not assessed — report only"
    }
   },
   "dokku": {
@@ -101,10 +104,34 @@
     "has": [
      "**POC:** none",
      "DOKKU_SCALE",
-     "release process"
+     "release process",
+     "beat / clock / scheduler process",
+     "HDS-ready architecture: not assessed (report only)"
     ],
-    "primary": "coolify-dokku-caprover"
-   }
+    "primary": "coolify-dokku-caprover",
+    "production": "not assessed — report only (Coolify / Dokku / CapRover is not covered yet); HDS contract not signed [assumed]: no real health data before it (health data: yes)",
+    "target_zone": "parhds"
+   },
+   "answers": {
+    "health": "yes"
+   },
+   "variants": [
+    {
+     "name": "health no",
+     "answers": null,
+     "expect": {
+      "production": "not assessed — report only (Coolify / Dokku / CapRover is not covered yet)",
+      "target_zone": "par",
+      "has": [
+       "**POC:** none",
+       "DOKKU_SCALE",
+       "release process",
+       "beat / clock / scheduler process",
+       "HDS-ready architecture: not assessed (report only)"
+      ]
+     }
+    }
+   ]
   },
   "firebase": {
    "modelled_on": "firebase/friendlyeats-web",
@@ -130,7 +157,8 @@
      "Firebase Auth",
      "Cloud Functions"
     ],
-    "primary": "firebase"
+    "primary": "firebase",
+    "production_prefix": "not assessed — report only"
    }
   },
   "fly": {
@@ -155,7 +183,8 @@
      "Fly Machines API",
      "Fly volume"
     ],
-    "primary": "fly-render"
+    "primary": "fly-render",
+    "production_prefix": "not assessed — report only"
    }
   },
   "gcp-azure": {
@@ -183,7 +212,8 @@
      "WEBSITE_HOSTNAME",
      "startup script with migrations"
     ],
-    "primary": "gcp-azure"
+    "primary": "gcp-azure",
+    "production_prefix": "not assessed — report only"
    }
   },
   "kubernetes": {
@@ -193,9 +223,13 @@
     "cmd/podinfo/main.go": "package main\n\nfunc main() {}\n",
     "charts/podinfo/Chart.yaml": "apiVersion: v2\nname: podinfo\nversion: 6.0.0\n",
     "kustomize/kustomization.yaml": "resources:\n  - deployment.yaml\n",
-    "deploy/database/pvc.yaml": "apiVersion: v1\nkind: PersistentVolumeClaim\nmetadata:\n  name: data\n",
-    "deploy/database/cronjob.yaml": "apiVersion: batch/v1\nkind: CronJob\nmetadata:\n  name: backup\n",
-    "otel/docker-compose.yaml": "services:\n  podinfo-frontend:\n    build: ..\n    ports:\n      - \"9898:9898\"\n  jaeger:\n    image: jaegertracing/all-in-one\n"
+    "deploy/bases/database/README.md": "# Database\n\nThese manifests simulate a database for the demo: a StatefulSet, its claim and a backup CronJob. Nothing here is a real database.\n",
+    "deploy/bases/database/statefulset.yaml": "apiVersion: apps/v1\nkind: StatefulSet\nmetadata:\n  name: database-primary\n",
+    "deploy/bases/database/pvc.yaml": "apiVersion: v1\nkind: PersistentVolumeClaim\nmetadata:\n  name: data\n",
+    "deploy/bases/database/cronjob.yaml": "apiVersion: batch/v1\nkind: CronJob\nmetadata:\n  name: backup\n",
+    "deploy/bases/frontend/cronjob-warm-cache.yaml": "apiVersion: batch/v1\nkind: CronJob\nmetadata:\n  name: warm-cache\n",
+    "otel/docker-compose.yaml": "services:\n  podinfo-frontend:\n    build: ..\n    ports:\n      - \"9898:9898\"\n  jaeger:\n    image: jaegertracing/all-in-one\n",
+    "pkg/api/http/server.go": "package http\n\nfunc (s *Server) registerHandlers() {\n\ts.router.HandleFunc(s.prefixedPath(\"/env\"), s.envHandler).Methods(\"GET\", \"POST\")\n\ts.router.HandleFunc(s.prefixedPath(\"/healthz\"), s.healthzHandler).Methods(\"GET\")\n}\n"
    },
    "expect": {
     "mode": "report-only",
@@ -203,15 +237,51 @@
      "nothing functional",
      "EUR/h",
      "no code change",
-     "Repo:**"
+     "Repo:**",
+     "PersistentVolumeClaims",
+     "StatefulSets"
     ],
     "has": [
      "**POC:** none",
-     "PersistentVolumeClaims",
-     "CronJobs"
+     "CronJobs",
+     "HDS-ready architecture: not assessed (report only)"
     ],
-    "primary": "kubernetes"
-   }
+    "primary": "kubernetes",
+    "apps_native": true,
+    "losses_has": [
+     "Kubernetes is not available in HDS"
+    ],
+    "production": "not assessed — report only (Kubernetes is not covered yet); HDS contract not signed [assumed]: no real health data before it (health data: yes)",
+    "target_zone": "parhds",
+    "read_first": "/env"
+   },
+   "answers": {
+    "health": "yes"
+   },
+   "variants": [
+    {
+     "name": "health no",
+     "answers": null,
+     "expect": {
+      "production": "not assessed — report only (Kubernetes is not covered yet)",
+      "target_zone": "par",
+      "losses_no": [
+       "Kubernetes"
+      ],
+      "apps_native": true,
+      "has": [
+       "**POC:** none",
+       "CronJobs",
+       "HDS-ready architecture: not assessed (report only)"
+      ],
+      "no": [
+       "PersistentVolumeClaims",
+       "StatefulSets"
+      ],
+      "read_first": "/env"
+     }
+    }
+   ]
   },
   "netlify": {
    "modelled_on": "netlify-templates/next-platform-starter",
@@ -240,7 +310,8 @@
      "Netlify Image CDN",
      "Edge Functions"
     ],
-    "primary": "netlify"
+    "primary": "netlify",
+    "production_prefix": "not assessed — report only"
    }
   },
   "platformsh": {
@@ -268,7 +339,8 @@
      "persistent mounts",
      "laravel-bridge"
     ],
-    "primary": "platformsh-upsun"
+    "primary": "platformsh-upsun",
+    "production_prefix": "not assessed — report only"
    }
   },
   "pocketbase": {
@@ -295,7 +367,8 @@
      "pb_data",
      "own port"
     ],
-    "primary": "appwrite-pocketbase"
+    "primary": "appwrite-pocketbase",
+    "production_prefix": "not assessed — report only"
    }
   },
   "railway": {
@@ -321,7 +394,8 @@
      "DATABASE_PUBLIC_URL",
      "Railway volume"
     ],
-    "primary": "railway"
+    "primary": "railway",
+    "production_prefix": "not assessed — report only"
    }
   },
   "render": {
@@ -349,7 +423,8 @@
      "static site service",
      "pre-deploy commands"
     ],
-    "primary": "fly-render"
+    "primary": "fly-render",
+    "production_prefix": "not assessed — report only"
    }
   },
   "scalingo": {
@@ -371,14 +446,29 @@
     "mode": "plan",
     "verdict": "ready with 2 changes",
     "has": [
-     "requirements.txt` — add requirements.txt (uv export",
-     "DATABASE_URL: fall back to the PostgreSQL add-on variable",
+     "CC_PYTHON_UV_RUN_COMMAND=uv run --no-sync gunicorn mydjango.wsgi:application",
+     "FORWARDED_ALLOW_IPS=*",
+     "map DATABASE_URL to POSTGRESQL_ADDON_URI",
+     "mydjango/urls.py",
+     "clever env set CC_HEALTH_CHECK_PATH /health --alias web",
+     "tables in PostgreSQL",
      "SECRET_KEY written in the code",
-     "CC_PYTHON_MANAGE_TASKS=migrate --no-input, collectstatic --noinput",
-     "Reply: **go"
+     "CC_POST_BUILD_HOOK=uv run --no-sync python manage.py migrate --noinput",
+     "can already run in HDS"
     ],
     "no": [
-     "Blocking"
+     "Blocking",
+     "uv export",
+     "CC_PYTHON_MANAGE_TASKS",
+     "not observed yet"
+    ],
+    "production_prefix": "ready",
+    "losses_has": [
+     "review apps",
+     "point-in-time recovery, if your current plan includes it"
+    ],
+    "losses_no": [
+     "one-off"
     ]
    }
   },
@@ -402,7 +492,8 @@
      "S3 buckets",
      "remote Terraform state"
     ],
-    "primary": "terraform-aws"
+    "primary": "terraform-aws",
+    "production_prefix": "not assessed — report only"
    }
   },
   "vm-manual": {
@@ -420,16 +511,19 @@
    "expect": {
     "primary": "vm-manual",
     "mode": "plan",
-    "verdict": "ready with 1 change",
+    "verdict": "ready with 2 changes",
     "has": [
      "CC_WORKER_COMMAND_0=rq worker microblog-tasks",
-     "CC_PRE_RUN_HOOK=flask db upgrade",
-     "CC_PYTHON_MODULE=microblog:app",
-     "go without elasticsearch"
+     "CC_POST_BUILD_HOOK=flask db upgrade && flask translate compile",
+     "CC_PYTHON_MODULE=microblog:app"
+    ],
+    "go_without": [
+     "elasticsearch"
     ],
     "no": [
      "Blocking"
-    ]
+    ],
+    "production_prefix": "ready"
    }
   },
   "local-flask-sqlite": {
@@ -455,13 +549,14 @@
      "CC_PYTHON_MODULE=app:app",
      "CRON_VARIABLES=",
      "Data to migrate — BEFORE the first deploy",
-     "nothing, once the data and files are migrated",
+     "the data and files move first (lines above)",
      "Europe/Paris",
-     "Reply: **go"
+     "can already run in HDS (parhds), apart from: files encrypted application-side"
     ],
     "no": [
      "Blocking"
-    ]
+    ],
+    "production_prefix": "ready"
    }
   }
  }

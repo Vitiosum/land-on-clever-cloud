@@ -33,7 +33,7 @@ Publishable key only: `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` → code of
 The Auth settings (question 6 of phase 0) are read without a secret key:
 
 ```bash
-curl -s -H "apikey: $PUBLISHABLE_KEY" https://<ref>.supabase.co/auth/v1/settings
+curl -q -s -H "apikey: $PUBLISHABLE_KEY" https://<ref>.supabase.co/auth/v1/settings
 ```
 
 Useful fields: `disable_signup`, `mailer_autoconfirm`, `external.*`

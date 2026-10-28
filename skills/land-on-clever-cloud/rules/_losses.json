@@ -1,0 +1,20 @@
+{
+  "_doc": "What a developer loses by moving to Clever Cloud, shown on the compatibility screen as visibly as the gains. Keys are provenance ids (rules/<id>.json) plus \"*\" for every repository; plan.py shows the entries of \"*\" and of the PRIMARY provenance only. Each entry: text (one short line, English), source (where the fact comes from), and optional when: \"hds\" = only when the plan targets HDS (health data yes or not sure), \"database\" = only when the plan lands a database (an optional one too), \"postgresql\" = only when it lands a PostgreSQL database (PITR: the Clever side, pgBackRest on request, is PostgreSQL's; never said for MySQL or MongoDB). Only losses Clever Cloud confirmed; no platform fact invented here. PITR is named only as a condition (\"if your current plan includes it\") for the origins whose managed databases may include it (Heroku, Scalingo): this file cannot know the plan.",
+  "losses": {
+    "*": [
+      {"text": "logs kept 7 days on Clever Cloud", "source": "Clever Cloud, as of 2026-10-26 (application logs are kept 7 days)"}
+    ],
+    "heroku": [
+      {"text": "one-off dynos (heroku run): no one-off container on Clever Cloud", "source": "Clever Cloud, as of 2026-10-26 (no one-off containers)"},
+      {"text": "review apps (an app per pull request): not built in on Clever Cloud", "source": "Clever Cloud, as of 2026-10-26 (no built-in review apps)"},
+      {"text": "point-in-time recovery, if your current plan includes it: on Clever Cloud it is set up with Clever (outside self-service)", "when": "postgresql", "source": "Clever Cloud, as of 2026-10-26 (point-in-time recovery on request); Clever side: modules/supabase/reference/clever-cloud.md (PITR with pgBackRest, on request to support)"}
+    ],
+    "scalingo": [
+      {"text": "review apps (an app per pull request): not built in on Clever Cloud", "source": "Clever Cloud, as of 2026-10-26 (no built-in review apps)"},
+      {"text": "point-in-time recovery, if your current plan includes it: on Clever Cloud it is set up with Clever (outside self-service)", "when": "postgresql", "source": "Clever Cloud, as of 2026-10-26 (point-in-time recovery on request); Clever side: modules/supabase/reference/clever-cloud.md (PITR with pgBackRest, on request to support)"}
+    ],
+    "kubernetes": [
+      {"text": "Kubernetes is not available in HDS (parhds): the apps land on native runtimes instead", "when": "hds", "source": "Clever Cloud, verified 2026-10-24: Clever Kubernetes is never in an HDS zone (rules/_zones.json non_addon_services.kubernetes)"}
+    ]
+  }
+}

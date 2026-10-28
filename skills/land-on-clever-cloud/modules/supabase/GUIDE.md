@@ -1,11 +1,12 @@
 # Supabase module — migrating a Supabase app to Clever Cloud
 
 This guide is loaded by the root skill (`<skill>/SKILL.md`) only when the provenance is
-Supabase, after the root's preflight, scan and plan. The plan picks a level: **A** = the app
-moves and Supabase stays (handled by the root workflow and `<skill>/reference/supabase.md`);
-**B** (data moves) and **C** (full exit) are deeper migrations, and this guide drives them from
-here on: survey, decisions, cutover plan, target, HDS compliance, scalability, and a replayable
-acceptance that proves the migration is faithful.
+Supabase. Until the developer's decision (the root journey, steps 0 to 5: silent read, the
+screens, the questions, the go) it adds nothing of its own. The plan picks a level: **A** = the
+app moves and Supabase stays (handled by the root journey and `<skill>/reference/supabase.md`);
+**B** (data moves) and **C** (full exit) are deeper migrations, and after the go this guide
+drives them: survey, decisions, cutover plan, target, HDS-ready architecture, scalability, and a
+replayable acceptance that proves the migration is faithful.
 
 ## The rule that overrides everything else
 
@@ -20,7 +21,7 @@ repository is three-quarters wrong, and convincingly wrong.
 
 ## What you produce, in order
 
-**In a POC run** (the root skill's workflow, any level), produce only `survey.json`, the
+**In a POC run** (the root skill's journey, any level), produce only `survey.json`, the
 deployed target and the proofs the scripts write (manifests of `migrate-storage.py`,
 `migrate-accounts.py`, outputs of `check-http.py` / `check-files.py`). The four documents
 below (`decisions.md`, `cutover.md`, `acceptance.md`, `gates.md`) belong to a **full migration
@@ -39,21 +40,24 @@ every assumption taken for lack of an answer.
 
 ---
 
-## Phase 0 — Framing
+## Phase 0 — Framing: the common journey
 
-### The first question decides the track
+### Before the go: the root skill's questions, nothing else
 
-> **Is personal health data hosted on behalf of a third party?**
-
-The track is **fixed for the whole engagement**: zone, add-ons, scripts.
+The questions of the root journey replace this module's own framing questions: screen 2
+(`<skill>/scripts/questions.py`: health data and the HDS contract, what really runs in
+production with its real sizes, the load, the service level), then the compatibility, price and
+migration-sketch screens, then the go. Their answers (`.clever-landing/answers.json`) fix the
+track **for the whole engagement**: zone, add-ons, scripts.
 
 | | **Non-HDS** track | **HDS** track |
 |---|---|---|
-| Zone | **`par`** (Paris) | **`parhds`** (Paris), recommended |
-| Alternatives | another zone only if the client asks | `rbxhds`, `grahds` (OVHcloud), only for a client reason: multi-site DR, hosting-provider requirement, existing contract; never `fr-north-hds` (does not accept applications) |
-| Add-ons | the whole catalogue of the zone | **only those of the chosen HDS zone** |
+| Health data (answers.json) | no | yes or not sure |
+| Zone | **`par`** (Paris) | **`parhds`** in production; the POC in `par` with synthetic data until the HDS contract is declared signed, then `parhds` |
+| Another HDS zone | — | never proposed by the skill; a client who needs one changes it himself |
+| Add-ons | the whole catalogue of the zone | **only those of `parhds`**; what needs no HDS goes to a second, non-HDS organisation |
 | `modules/supabase/reference/hds.md` | **ignore it** | catalogue from the decisions phase, the rest before phase 4 |
-| `deploy-target.sh` | `TRACK=non-hds` | `TRACK=hds` |
+| `deploy-target.sh` | `TRACK=non-hds` (zone `par`) | `TRACK=hds`: zone `par` by default (the POC, synthetic data, HDS-ready rules, a banner says so); `parhds` only with `HDS_CONTRACT=signed` (declared by the client); an HDS zone without it is refused |
 
 **Paris first, on both tracks** (best performance, Cellar in particular).
 
@@ -61,23 +65,26 @@ The track is **fixed for the whole engagement**: zone, add-ons, scripts.
 
 **HDS: prerequisites to show the client as they are, before any technical proposal.**
 
-1. **HDS contract signed with Clever Cloud**: *"HDS zone + signed HDS contract"*, never
-   *"deployed in an HDS region, therefore compliant"*.
-2. **HDS zone chosen at the start**, the same for every resource (app, database, storage).
+1. **HDS contract signed with Clever Cloud**: *"HDS zone + signed HDS contract"*.
+   Never say *"deployed in an HDS region, therefore compliant"*.
+   The skill writes "HDS-ready architecture: yes" or "… missing <x>".
+2. **One HDS zone, `parhds`**, the same for every resource (app, database, storage).
 3. **Dedicated plans** for the data (never `dev`), **encryption at rest enabled at creation**.
 4. **The client's responsibility**: application code, application identities and permissions,
-   named access traceability, any application-level encryption, GDPR compliance of the
-   processing (legal basis, retention periods, DPIA, data subjects' rights).
+   named access traceability, any application-level encryption, the GDPR obligations of the
+   processing (legal basis, retention periods, DPIA, data subjects' rights). These legal points
+   are never asked during the journey: they go to "To prepare for the HDS meeting" of the
+   contact request (`<skill>/scripts/deliverables.py --kind contact`).
 
-**Never in an HDS zone**: Keycloak, MongoDB, Matomo, FS Bucket, Materia KV, Mailpace, Azimutt,
-Clever Kubernetes (CKE). The rest depends on the zone: only offer what it provides
-(`modules/supabase/reference/hds.md` §The add-on catalogue has gaps, to be re-checked before
-each engagement). Available does not mean certified: the scope is confirmed in the contract.
-With no Keycloak in HDS, authentication happens in the application (path 1: accounts and hashes
-migrated). A service missing from the HDS zones but useful (MailPace, Matomo…): offer a
-**second, non-HDS organisation** for the components that hold no health data, with the boundary
-documented (`modules/supabase/reference/hds.md` §Architecture option: two organisations);
-validated by Clever's legal team and the client's DPO.
+**Keycloak**: possible in HDS but billed extra, so **never recommended there**: it goes to a
+second, non-HDS organisation (below). **Never in an HDS zone**: MongoDB, Matomo, FS Bucket,
+Materia KV, Mailpace, Azimutt, Clever Kubernetes (CKE). Only offer
+what `parhds` provides (`modules/supabase/reference/hds.md` §The add-on catalogue has gaps, to
+be re-checked before each engagement). Available does not mean certified: the scope is
+confirmed in the contract. Authentication of health users happens in the application (path 1:
+accounts and hashes migrated). A service that needs no HDS (Keycloak, MailPace, Matomo,
+preproduction, tools) goes, by default, to a **second, non-HDS organisation**, with its boundary
+documented (`<skill>/reference/zones.md` §Two organisations); the client's DPO checks it.
 
 ### Say it at framing: private files need the secret key
 
@@ -100,29 +107,32 @@ exact host given with `--source-host`); a key file inside the repository is refu
 the file is deleted after the migration. The agent never reads it: no CLI that prints it, no page,
 screenshot or DOM where it is revealed — the developer copies it themselves.
 
-### The other questions (they change the architecture)
-
-2. **Sovereignty**: required, or a sales argument?
-3. **Tolerated downtime window**, in minutes: cold cutover or logical replication.
-4. **Production volume**, not the demo's (rows of the three largest tables, Storage, active
-   users). **Unknown = say so**: it is measured on the client's production before the cutover
-   is costed.
-5. **Who operates after the cutover?** A client with no on-call must not inherit four
-   containers to maintain.
-6. **Auth settings**: email confirmation, open or closed sign-up, the client's SMTP, OAuth
-   providers (readable without a secret key: `modules/supabase/reference/survey.md` §2). A
-   sign-up with email confirmation cannot move without SMTP: to be decided at gate 1.
-
 **State right now what is out of your reach**
 (`modules/supabase/reference/survey-without-access.md` §What stays out of reach): discovered in
 phase 5, it blocks the data migration.
 
+### After the POC: two questions of this module
+
+With the root journey's after-POC question (`questions.py --after-poc`: who operates it, the DNS,
+the deadline, the legal entity), ask, and log in `gates.md`:
+
+- **Who operates after the cutover?** A client with no on-call must not inherit four containers
+  to maintain.
+- **The tolerated cutover window**, in minutes: a cold cutover or logical replication (phase 3).
+
+The **Auth settings** (email confirmation, open or closed sign-up, the client's SMTP, OAuth
+providers) are read by the survey, not asked (readable without a secret key:
+`modules/supabase/reference/survey.md` §2). A sign-up with email confirmation cannot move
+without SMTP: to be decided at gate 1.
+
 ### No answer from the client: autonomous agent mode
 
-Do not block: take the most cautious assumption (HDS at the slightest doubt about the data,
-cold cutover, survey volume **flagged as not representative**) and **log** it in `gates.md`,
-to be confirmed. Same rule at the three gates: decide the recommended option, write it in the
-log with the time and what it commits.
+The root journey's rule: an unanswered question stays `[assumed]` (HDS at the slightest doubt
+about the data), and nobody to ask means report only, unless a go given in advance names a plan
+and a price ceiling the dry-run price stays under. Once a go exists, do not block at the
+gates: take the most cautious assumption (cold cutover, survey volume **flagged as not
+representative**), decide the recommended option and **log** it in `gates.md` with the time and
+what it commits, to be confirmed.
 
 ---
 
@@ -203,7 +213,7 @@ To decide **before** the table: it changes half of its lines.
    (Node or Bun), or a Deno Docker image. **`pg_cron` + `pg_net`** → a Clever scheduled task
    calling the same URL (`<skill>/templates/cron/`: `cron.json`, `cron-job.sh`, `cron-env.sh`;
    in the app `clevercloud/cron-job.sh POST /tasks/reminder`,
-   `CC_PRE_RUN_HOOK="bash clevercloud/cron-env.sh"`, `CRON_VARIABLES="API_SERVICE_TOKEN …"`,
+   `CC_PRE_RUN_HOOK="bash clevercloud/cron-env.sh"`, `CRON_RUNS_HERE=1`, `CRON_VARIABLES="API_SERVICE_TOKEN …"`,
    `CRON_BASE_URL`, `CRON_TOKEN_VAR=API_SERVICE_TOKEN` — defaults `CRON_SECRET` and port 8080,
    token required unless `CRON_NO_TOKEN=1`; empty job environment, multi-instance,
    Docker: `modules/supabase/reference/clever-cloud.md` §3 CRON).
@@ -233,7 +243,7 @@ needed, say so**, with thresholds read from the measurements:
 - **no batches** if the longest measured operation (`measure-cost.sh`) stays under a tenth of
   the `statement_timeout` of the session that will run it;
 - **no logical replication** if dump + transfer + import + acceptance fit in the tolerated
-  window (question 3). A common case — and it is not open by default on the add-on.
+  window (asked after the POC, phase 0). A common case — and it is not open by default on the add-on.
 
 The runbook then says "cold, no batches", with figures.
 
@@ -244,17 +254,24 @@ The runbook then says "cold, no batches", with figures.
 **Every creation carries an explicit `--region`, `--plan` and encryption, on both tracks.**
 Otherwise `clever create` / `clever addon create` take `par` (non-HDS), the `dev` plan (5
 connections, no extension, no backup) and no encryption, which can only be set **at creation**
-(`--option encryption=true`) — afterwards, it is a migration through support. **Compliant from
-creation, so you never migrate later**: every database that allows it (PostgreSQL, MySQL,
-Redis, MongoDB, Elasticsearch) is created on a dedicated plan **with encryption at rest**. The
-`dev` plan is only accepted for a throwaway trial, on explicit request. At the slightest doubt
-about future health data, go straight to `parhds`.
+(`--option encryption=true`) — afterwards, it is a migration through support. **Encrypted from
+creation, on the production plan, so you never migrate later**: every database that allows it
+(PostgreSQL, MySQL, Redis, MongoDB, Elasticsearch) is created on a dedicated plan **with
+encryption at rest**. The `dev` plan is only accepted for a throwaway trial, on explicit request.
+At the slightest doubt about future health data, the target is `parhds` (the POC stays in `par`
+with synthetic data until the HDS contract is signed): `TRACK=hds deploy-target.sh` creates in
+`par` by default, on the HDS-ready rules (dedicated encrypted plans, only services `parhds` also
+offers), prints the "SYNTHETIC DATA ONLY" banner, and moves to `parhds` only with
+`HDS_CONTRACT=signed`, the client's declaration (never checked by the skill: `[declared]`).
 **One creation path per case.** Level **A** (the app moves, Supabase stays): the root
 `<skill>/scripts/provision.sh`, driven by `plan.json`. Levels **B and C** (a survey exists):
 `modules/supabase/templates/deploy-target.sh`, driven by `survey.json` (buckets, PostgreSQL
 version, HDS track). Never both for the same target: the second would see the first's
 resources as "reuse" and its ledger would miss them.
-`modules/supabase/templates/deploy-target.sh` applies these rules, `--org` included. **Dry run
+`modules/supabase/templates/deploy-target.sh` applies these rules, `--org` included, on the
+plan the go named: `PG_PLAN=<plan.json: the postgresql-addon plan> TRACK=<track>
+deploy-target.sh <prefix> <orga_…> survey.json` (`PG_PLAN` is required: the script never picks a
+plan, so it creates the plan screen 4 priced). **Dry run
 by default**: it shows the plan, the price read live (`<skill>/scripts/price.py`) and a token
 (`TOKEN: <12 hex>`, computed by `<skill>/scripts/lib/approval.py`); it only executes with
 `--approve <token>`. The token proves that what runs is what was shown, not that a human said
@@ -269,10 +286,10 @@ application creation limit (hours). Commands, hooks, cron:
 false beliefs and non-binding text never to quote, good practices never to present as
 obligations, questions still open.
 
-**A resource outside the HDS zone gives no signal**: created without `--region parhds` (or the
-chosen zone), it leaves the certified scope even "in Paris", and the application talks to it
-without complaint. Fixing it requires a migration with downtime, **compliance broken in the
-meantime** (`modules/supabase/reference/hds.md` §Zone choice).
+**A resource outside the HDS zone gives no signal**: once the contract is signed, a resource
+created without `--region parhds` leaves the certified scope even "in Paris", and the application talks to it without complaint.
+Fixing it requires a migration with downtime, **outside the certified scope in the meantime**
+(`modules/supabase/reference/hds.md` §Zone choice).
 
 **Gate 2**: validate the target architecture and the budget before deploying.
 

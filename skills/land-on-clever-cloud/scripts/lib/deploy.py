@@ -3,9 +3,12 @@
 Called by scripts/deploy.sh. argv only (shell=False). A push refused as non-fast-forward is forced
 ONLY when the target app is one of this POC's apps: its name starts with the plan's prefix AND it
 is in the ledger (created or reused by this skill). Before forcing, the remote head is backed up
-to a local branch `clever-backup/<alias>-<UTC time>` and printed. Otherwise: stop with a question.
+to a local branch `clever-backup/<alias>-<UTC time>` and printed. Otherwise: stop with a question,
+which prints a token; `--force <token>` (only after the developer said yes) forces that app — the
+token binds the app, its deployed head and the local commit, so a stale or wrong one is refused.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -45,7 +48,8 @@ def clever_app(repo, alias):
         d = json.load(open(os.path.join(repo, ".clever.json")))
     except (OSError, ValueError):
         return None
-    app = next((x for x in d.get("apps", []) if isinstance(x, dict) and x.get("alias") == alias), None)
+    apps = d.get("apps") if isinstance(d, dict) else None
+    app = next((x for x in (apps if isinstance(apps, list) else []) if isinstance(x, dict) and x.get("alias") == alias), None)
     return app if app and APP_ID_RX.match(str(app.get("app_id", ""))) else None
 
 
@@ -123,6 +127,36 @@ def report_line(app, alias, head, local, branch):
         ("previous head kept in local branch %s" % branch) if branch else "previous head NOT backed up (forced without backup, as approved)"))
 
 
+def force_token(app, alias, head, local):
+    """RT D6: the token of the question "force-push, or deploy elsewhere?" — the app, its deployed head and the local commit it would replace. A consistency
+    check that the developer's yes is about THIS push (never consent by itself): it changes as soon as one of them does."""
+    return hashlib.sha256(("deploy-force\0%s\0%s\0%s" % (app.get("app_id") or alias, head or "unknown", local or "?")).encode()).hexdigest()[:12]
+
+
+def rerun_line(a, *extra):
+    """The exact deploy.sh line to run again after the developer's yes: this run's own options (--branch, --same-commit-policy) echoed, then `extra`
+    (a value is one of the checked forms: the alias, the branch and the token passed their patterns, the policy is one of four words)."""
+    parts = ["bash <skill>/scripts/deploy.sh --alias %s" % a.alias]
+    if a.branch:
+        parts.append("--branch %s" % a.branch)
+    if a.same_commit_policy:
+        parts.append("--same-commit-policy %s" % a.same_commit_policy)
+    return " ".join(parts + list(extra))
+
+
+def force_question(app, a, token, why):
+    """The question of an app this skill cannot prove is its own, with the exact re-run line for a yes (RT D6: no scripted path existed after "force")."""
+    print("QUESTION: %s is not provably one of this POC's apps (%s). Forcing would overwrite its history (the remote head is backed up first). Ask the developer: "
+          "force-push, or deploy elsewhere? Only after the developer says yes: %s" % (app.get("name") or a.alias, why, rerun_line(a, "--force", token)))
+
+
+def backup_question(a, how, head, approved):
+    """No backup of the remote head is possible: the question, with the exact re-run line for a yes — the --force <token> of an approved run kept beside
+    --force-without-backup (without it, the re-run would stop at the force question again)."""
+    print("QUESTION: %s (deployed head: %s). Force anyway, losing it? Only after the developer says yes: %s" % (
+        how, head or "unknown", rerun_line(a, *((["--force", a.force_token] if approved else []) + ["--force-without-backup"]))))
+
+
 def force_allowed(a, app):
     prefix = plan_prefix(a.plan)
     has_prefix = bool(prefix and str(app.get("name", "")).startswith(prefix + "-"))
@@ -138,7 +172,11 @@ def main(argv):
     ap.add_argument("--branch")
     ap.add_argument("--same-commit-policy", choices=["error", "ignore", "restart", "rebuild"])
     ap.add_argument("--force-without-backup", action="store_true")
+    ap.add_argument("--force", dest="force_token", metavar="TOKEN", help="the token of the force question, after the developer's yes")
     a = ap.parse_args(argv)
+    if a.force_token is not None and not re.fullmatch(r"[0-9a-f]{12}", a.force_token):
+        print("REFUSED: --force takes the 12-character token the question printed")
+        return 10
     if not re.fullmatch(r"^[a-z0-9][a-z0-9-]{0,62}$", a.alias):
         print("REFUSED: invalid alias")
         return 10
@@ -165,26 +203,32 @@ def main(argv):
                                                    " · NOT an ancestor of the local commit" if diverged else ""))
     forced = False
     branch = None
+    token = force_token(app, a.alias, head, local)
+    approved = a.force_token is not None and a.force_token == token
+    if a.force_token is not None and not approved:
+        print("REFUSED: the --force token does not match this app, its deployed head and the local commit (one of them changed since the question, or the "
+              "token is not this question's): nothing pushed — run deploy.sh without --force and ask again")
+        return 10
     if diverged:
         ok_, prefix, has_prefix, listed = force_allowed(a, app)
         print("NON-FAST-FORWARD (decided before the push): the app's remote holds %s, which the local commit does not descend from%s." % (
             head[:12], " (the local commit is a root commit: the shallow-clone snapshot)" if is_root_commit(a.repo, local) else ""))
-        if not ok_:
-            print("QUESTION: %s is not provably one of this POC's apps (name prefix %r: %s; in the ledger: %s). Forcing would overwrite its "
-                  "history. Ask the developer: force-push, or deploy elsewhere?" % (app.get("name") or a.alias, prefix, "yes" if has_prefix else "no",
-                                                                                    "yes" if listed else "no"))
+        if not ok_ and not approved:
+            force_question(app, a, token, "name prefix %r: %s; in the ledger: %s" % (prefix, "yes" if has_prefix else "no", "yes" if listed else "no"))
             return 13
+        if not ok_:
+            print("FORCE approved by the developer (--force token %s): %s is not one of this POC's apps" % (token, app.get("name") or a.alias))
         branch, sha, how = backup_remote(a.repo, app, a.alias, head)
         if branch:
             print("BACKUP remote head %s saved as local branch %s (%s)" % (sha, branch, how))
         elif not a.force_without_backup:
-            print("QUESTION: %s (deployed head: %s). Force anyway, losing it? Re-run with --force-without-backup only after the developer says yes." % (how, head))
+            backup_question(a, how, head, approved)
             return 13
         else:
             print("WARNING forcing WITHOUT backup, as approved: remote head %s is lost" % head)
         forced = True
     argv_ = base + (["--force"] if forced else [])
-    print("RUN   " + " ".join(argv_) + ("   # forced: app %s has the plan prefix and is in the ledger" % app.get("name") if forced else ""))
+    print("RUN   " + " ".join(argv_) + (("   # forced: approved by the developer (--force)" if approved else "   # forced: app %s has the plan prefix and is in the ledger" % app.get("name")) if forced else ""))
     out, rc = run(argv_, a.repo, stream=True)
     if rc == 0:
         print("DEPLOYED %s%s%s" % (a.alias, " (forced)" if forced else "", (" — previous remote head kept in branch " + branch) if branch else ""))
@@ -199,13 +243,12 @@ def main(argv):
         # the remote moved under us, or the cause is hidden by the shallow message: same rule, decided now
         print("PUSH REFUSED%s: applying the non-fast-forward rule." % (" (cause hidden by clever-tools' 'repository is shallow' message)" if shallow_mask else ""))
         ok_, prefix, has_prefix, listed = force_allowed(a, app)
-        if not ok_:
-            print("QUESTION: %s is not provably one of this POC's apps (prefix %s, ledger %s): ask before forcing." % (
-                app.get("name") or a.alias, "yes" if has_prefix else "no", "yes" if listed else "no"))
+        if not ok_ and not approved:
+            force_question(app, a, token, "prefix %s, ledger %s" % ("yes" if has_prefix else "no", "yes" if listed else "no"))
             return 13
         branch, sha, how = backup_remote(a.repo, app, a.alias, head)
         if not branch and not a.force_without_backup:
-            print("QUESTION: %s (deployed head: %s). Force anyway? Re-run with --force-without-backup only after a yes." % (how, head or "unknown"))
+            backup_question(a, how, head, approved)
             return 13
         if branch:
             print("BACKUP remote head %s saved as local branch %s (%s)" % (sha, branch, how))

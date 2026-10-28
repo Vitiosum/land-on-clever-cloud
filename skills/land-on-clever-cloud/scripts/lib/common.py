@@ -13,9 +13,18 @@ import subprocess
 import sys
 import time
 
+_LIB = os.path.dirname(os.path.abspath(__file__))
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)          # `python3 -I common.py mask`: isolated mode does not put the script's folder on the path
+import controls as _controls  # noqa: E402
+
 SKILL_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 RULES_DIR = os.path.join(SKILL_DIR, "rules")
 HDS_ZONES = ("parhds", "rbxhds", "grahds")
+# What is NOT the app's in the public schema of a PostgreSQL add-on: ONE list for the plan (REPORT, pg_tables.not_counted) and for prove.sh --pg-expect-tables (its query), so the
+# REPORT states what prove.sh really excludes. The PostGIS family — a fresh Clever add-on already holds spatial_ref_sys and the geometry / geography views (real test T2) — and the
+# address standardizer's tables. The query also leaves out any table that belongs to an extension (pg_depend), whatever its name.
+PG_NOT_COUNTED = ("spatial_ref_sys", "geography_columns", "geometry_columns", "raster_columns", "raster_overviews", "us_gaz", "us_lex", "us_rules")
 
 # ---------------------------------------------------------------- masking
 # a secret word must be a WHOLE component of the name (DB_PASS, APP_KEY, apikey…), never part of a word
@@ -425,18 +434,48 @@ class Catalog:
             out.append({"slug": p.get("slug"), "type": typ, "encryption": enc, "features": feats})
         return out
 
+    def versions(self, pid, plan=None):
+        """The versions the catalogue offers for an add-on, read where the plan lists them (`clever addon providers show <provider>`:
+        plans[].versions[] = {"version", "isDefault", "features"}): {"offered": [str, ...], "default": str or None, "label": where it was read}, or None
+        when the catalogue lists none (unreadable, a snapshot, a provider with no versions). The versions of the named plan when it lists some, else
+        the union over the plans. Only strict version tokens (ADDON_VERSION_RX) are kept: the answer is data, never a command."""
+        d = self.provider(pid) or {}
+        plans = [p for p in d.get("plans") or [] if isinstance(p, dict)]
+        chosen = [p for p in plans if p.get("slug") == plan and p.get("versions")] or [p for p in plans if p.get("versions")]
+        offered, default = [], None
+        for p in chosen:
+            for v in p.get("versions") or []:
+                tok = v.get("version") if isinstance(v, dict) else None
+                if isinstance(tok, str) and ADDON_VERSION_RX.match(tok):
+                    if tok not in offered:
+                        offered.append(tok)
+                    if v.get("isDefault") is True and default is None:
+                        default = tok
+        if not offered:
+            return None
+        offered.sort(key=lambda s: [int(x) for x in s.split(".")])
+        return {"offered": offered, "default": default, "label": self.label(pid)}
+
 
 # ---------------------------------------------------------------- validation of repo-derived values
 # \A…\Z, never ^…$: with re.match, $ also accepts a trailing newline ("FOO\n").
 SLUG_RX = re.compile(r"\A[a-z0-9][a-z0-9-]{0,62}\Z")
 ENV_NAME_RX = re.compile(r"\A[A-Z_][A-Z0-9_]*\Z")
-CONTROL_RX = re.compile(r"[\x00-\x1f\x7f]")
+# THE sanitizer of untrusted display text (and the guard of a value that must hold none): Unicode categories Cc, Cf, Zl and Zp — lib/controls.py, one
+# definition for common.py, handoff.py (pure) and prove.sh's log masker (`common.py mask`)
+CONTROL_RX = _controls.CONTROL_RX
 TOKEN_RX = re.compile(r"\A[A-Za-z0-9_.-]{1,80}\Z")          # providers, plans, zones, flavors, types, org ids
+# $NAME or ${NAME…} in a value (not the escaped $$ of a compose file): the NAMES a value points at, never the value
+DOLLAR_REF = re.compile(r"(?<!\$)\$(?:\{([A-Za-z_][A-Za-z0-9_]*)[^}]{0,60}\}|([A-Za-z_][A-Za-z0-9_]*))")
+ADDON_VERSION_RX = re.compile(r"\A[0-9]{1,3}(?:\.[0-9]{1,3}){0,2}\Z")      # a database version token (16, 8.4, 8.10.2): the only form that reaches --addon-version
 FOLDER_RX = re.compile(r"\A[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*\Z")
 APP_ID_RX = re.compile(r"\Aapp_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
 ADDON_ID_RX = re.compile(r"\Aaddon_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
 PUSH_URL_RX = re.compile(r"\Ahttps://push-[a-z0-9-]+\.services\.clever-cloud\.com/(app_[0-9a-f-]+)\.git\Z")
 STATE_PATHS = (".clever.json", ".clever-landing")
+# removing an app's default domain is IRREVERSIBLE (observed 2026-10-27): plan.py says it for the env route's closure and for a scheduler app, provision.py asks first
+DEFAULT_DOMAIN_GONE = ("IRREVERSIBLE: the default domain cannot be added back once removed — `clever domain add app-<id>.cleverapps.io` answers \"You are not allowed to use "
+                       "app-….cleverapps.io\" [observed 2026-10-27]: from then on the app answers only on the domains it has")
 
 
 def tracked_state(repo):
@@ -505,16 +544,30 @@ def record_plan(repo, path):
     return True
 
 
-def known_plan(repo, path):
-    """True only if plan.py wrote exactly this content on this machine (sha256 in the .git/ registry)."""
+def _registered(repo, h):
     reg = _plan_registry(repo) if repo else None
     if not reg or not os.path.isfile(reg) or os.path.islink(reg):
         return False
     try:
-        h = file_sha256(path)
         return any(l.split(" ", 1)[0] == h for l in open(reg, encoding="utf-8").read().splitlines())
     except OSError:
         return False
+
+
+def known_plan(repo, path):
+    """True only if plan.py wrote exactly this content on this machine (sha256 in the .git/ registry)."""
+    try:
+        h = file_sha256(path)
+    except OSError:
+        return False
+    return _registered(repo, h)
+
+
+def known_plan_bytes(repo, raw):
+    """known_plan for bytes already read: a caller that parses a plan hashes THE SAME bytes it parses (a second read of a file, a FIFO or a file
+    that changes between two reads, could hand it other content than the one that was checked)."""
+    import hashlib
+    return _registered(repo, hashlib.sha256(raw).hexdigest())
 
 
 def read_ledger(repo):
@@ -575,15 +628,6 @@ def shq(value):
     return shlex.quote(str(value))
 
 
-def md_code(text):
-    """Inline Markdown code span that survives backticks inside the text (CommonMark: a longer fence)."""
-    t = CONTROL_RX.sub(" ", str(text))
-    run = max([len(m) for m in re.findall(r"`+", t)] or [0])
-    fence = "`" * (run + 1)
-    pad = " " if run else ""
-    return fence + pad + t + pad + fence
-
-
 def marker_text(value, limit=80):
     """A text marker taken from the repo (HTML <title>, a log line) for prove.sh: the longest run
     without backtick or control character, so it is still a true substring of what the app prints."""
@@ -615,6 +659,29 @@ def mask_json(v):
     return v
 
 
+def safe_secret(nbytes, token=None):
+    """A random urlsafe secret that never starts with "-": the argument parser of clever-tools 5.2.0 (cliparse 0.5.0, then minimist) reads `clever env set NAME -abc` as
+    options, so the value is lost or becomes `true` (about 1 token in 64 starts with "-"). A token that does is drawn again; 64 draws in a row is a broken generator."""
+    import secrets as _secrets
+    token = token or _secrets.token_urlsafe
+    for _ in range(64):
+        v = token(nbytes)
+        if not v.startswith("-"):
+            return v
+    raise RuntimeError("64 secrets in a row start with '-': the generator is broken")
+
+
+def dollar_refs(value):
+    """The variable names a value points at with $NAME or ${NAME}: ["HOST", "FEED_BASE"], in order, at most 6. Clever does not expand them in an
+    environment variable's value (test T1), so the plan warns; only the names are kept, never the value (it may hold a password)."""
+    out = []
+    for m in DOLLAR_REF.finditer(value if isinstance(value, str) else ""):
+        n = m.group(1) or m.group(2)
+        if n not in out:
+            out.append(n)
+    return out[:6]
+
+
 if __name__ == "__main__":
     # `python3 -I common.py mask`      : stdin → stdout, line by line, masked
     # `python3 -I common.py mask-json` : a JSON document → the same document, every string masked
@@ -623,8 +690,8 @@ if __name__ == "__main__":
     if sys.argv[1:] == ["fake-clever"]:            # exit 0 only when the clever on PATH is the selftest's fake
         sys.exit(0 if fake_clever() else 1)
     if sys.argv[1:] == ["mask"]:
-        for _line in sys.stdin:
-            print(mask(_line, limit=0))
+        for _line in sys.stdin:          # one line per "\n" (never splitlines(): U+2028 is no line break here), its controls made blanks first
+            print(mask(CONTROL_RX.sub(" ", _line), limit=0))
     elif sys.argv[1:] == ["mask-json"]:
         json.dump(mask_json(json.load(sys.stdin)), sys.stdout, indent=1, ensure_ascii=False)
         print()

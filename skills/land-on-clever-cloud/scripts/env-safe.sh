@@ -11,13 +11,19 @@
 #   bash env-safe.sh generate NAME [--bytes 48] [--format urlsafe|laravel] [--alias A]
 #       Generate a random secret (e.g. DJANGO_SECRET_KEY, APP_KEY), set it, verify it;
 #       the value lives only in this process and is never printed.
+#   bash env-safe.sh copy NAME1,NAME2,... --from SOURCE_ALIAS --alias TARGET_ALIAS
+#       Copy the VALUES of these variables from one app to another (a beat / scheduler app of its own gets the
+#       web app's secrets: the same SECRET_KEY, never a second generated one). The values are read from
+#       `clever env --format json --alias SOURCE` (5.2.0: {"env": [...], "fromAddons": ...}, the app's own variables), kept in this Python process only (no file, no shell variable,
+#       nothing exported, nothing on this script's command line or output), set one `clever env set NAME VALUE`
+#       per variable on TARGET, then the names are VERIFIED there. A name missing on SOURCE: exit 3, names only.
 #   bash env-safe.sh verify NAME1,NAME2,... [--alias A]
 #       Fail loudly if a name is missing on the app; report stray one-letter or `_` variables.
 #   bash env-safe.sh diff <dotenv-file> [--alias A]
 #       Names present locally but missing on the app, and the reverse.
 #   bash env-safe.sh env-file --out FILE (--addon ADDON_ID_OR_NAME [--org ORG] | --alias A) [--only P1,P2]
 #       Write the variables of an add-on (`clever addon env <addon_id> --format json`) or of an app
-#       (`clever env --format json`) to FILE, mode 600, as KEY=VALUE without quotes — the file that
+#       (`clever env --format json`: its own variables, the "env" list) to FILE, mode 600, as KEY=VALUE without quotes — the file that
 #       migrate-sqlite.py --pg-env-file, migrate-files.py --cellar-env-file and psql scripts read.
 #       An add-on NAME is resolved to its addon_… id with `clever addon list --org ORG` (ORG
 #       required then). --only keeps the names starting with these prefixes (e.g. POSTGRESQL_ADDON_).
@@ -30,14 +36,16 @@
 # Values are never printed, never logged, never written to the ledger. Known limit: clever-tools
 # 5.2.0 has no stdin input for `clever env set`, so each value is on THAT command line for the time
 # of the call (visible to `ps` by another user of this machine): run it on a single-user machine.
-# Exit: 0 ok, 2 usage or refused name, 3 name missing in file, 4 clever failed, 5 verification failed.
+# A value that starts with "-" is refused (exit 6, names only): the argument parser of clever-tools 5.2.0 (cliparse 0.5.0, then
+# minimist) reads `clever env set NAME -abc` as options and loses the value or sets `true`; `generate` never draws such a value.
+# Exit: 0 ok, 2 usage or refused name, 3 name missing in file, 4 clever failed, 5 verification failed, 6 a value starts with "-".
 
 set -u
 . "$(cd "$(dirname "$0")" && pwd)/lib.sh"
 
 CMD="${1:-}"; [ $# -gt 0 ] && shift
 case "$CMD" in ""|-h|--help) loc_help "$0"; exit 0 ;; esac
-ALIAS_ARGS=(); ARGS=(); BYTES=48; JSON=0; FORMAT=urlsafe; E_ADDON=""; E_ORG=""; E_OUT=""; E_ONLY=""
+ALIAS_ARGS=(); ARGS=(); BYTES=48; JSON=0; FORMAT=urlsafe; E_ADDON=""; E_ORG=""; E_OUT=""; E_ONLY=""; FROM_ALIAS=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --alias) loc_need "$@"; ALIAS_ARGS=(--alias "$2"); shift 2 ;;
@@ -48,6 +56,7 @@ while [ $# -gt 0 ]; do
     --org) loc_need "$@"; E_ORG="$2"; shift 2 ;;
     --out) loc_need "$@"; E_OUT="$2"; shift 2 ;;
     --only) loc_need "$@"; E_ONLY="$2"; shift 2 ;;
+    --from) loc_need "$@"; FROM_ALIAS="$2"; shift 2 ;;
     *) ARGS+=("$1"); shift ;;
   esac
 done
@@ -77,8 +86,11 @@ push_name() {  # push_name NAME: the only names a value may be set for
 # set_values MODE FILE-or-BYTES NAME...: parse (push) or generate the values IN Python and call
 # `clever env set NAME VALUE` there, argv only: no value is ever exported, expanded or printed by bash.
 set_values() {
-  python3 -I - "$@" ${ALIAS_ARGS[@]+"${ALIAS_ARGS[@]}"} <<'PYS'
+  python3 -I - "$LOC_SCRIPTS_DIR/lib" "$@" ${ALIAS_ARGS[@]+"${ALIAS_ARGS[@]}"} <<'PYS'
 import re, secrets, subprocess, sys
+sys.path.insert(0, sys.argv[1])
+from common import safe_secret
+sys.argv = [sys.argv[0]] + sys.argv[2:]
 mode, src = sys.argv[1], sys.argv[2]
 rest = sys.argv[3:]
 alias = rest[rest.index("--alias"):] if "--alias" in rest else []
@@ -95,18 +107,65 @@ if mode == "push":
     missing = [n for n in names if n not in vals]
     if missing:
         print("missing in %s: %s" % (src, " ".join(missing))); sys.exit(3)
+    dashed = [n for n in names if vals[n].startswith("-")]
+    if dashed:
+        print("refused (names): %s start with '-': the argument parser of clever-tools 5.2.0 reads such a value as an option and would lose it or set `true`; set it in the Console" % " ".join(dashed)); sys.exit(6)
 else:
     import base64, os
     if os.environ.get("FMT") == "laravel":          # Laravel APP_KEY: "base64:" + 32 random bytes
         vals = {n: "base64:" + base64.b64encode(secrets.token_bytes(32)).decode() for n in names}
     else:
-        vals = {n: secrets.token_urlsafe(int(src)) for n in names}
+        vals = {n: safe_secret(int(src)) for n in names}
 for n in names:
     r = subprocess.run(["clever", "env", "set", n, vals[n]] + alias, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     vals[n] = None
     if r.returncode != 0:
         print("clever env set %s failed (value not shown)" % n); sys.exit(4)
 PYS
+}
+
+# copy_values NAME...: the values come from the app FROM_ALIAS and go to the --alias app INSIDE Python: never a file, never a shell variable, never printed
+copy_values() {
+  python3 -I - "$FROM_ALIAS" "$@" ${ALIAS_ARGS[@]+"${ALIAS_ARGS[@]}"} <<'PYC'
+import json, subprocess, sys
+src = sys.argv[1]
+rest = sys.argv[2:]
+alias = rest[rest.index("--alias"):] if "--alias" in rest else []
+names = rest[:rest.index("--alias")] if alias else rest
+r = subprocess.run(["clever", "env", "--format", "json", "--alias", src], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+if r.returncode != 0:
+    print("copy: could not read the variables of %s (not logged in? wrong alias?)" % src); sys.exit(4)
+try:
+    d = json.loads(r.stdout.decode("utf-8", "replace"))
+except ValueError:
+    print("copy: unexpected output (not JSON) for %s: nothing copied" % src); sys.exit(4)
+r = None
+if isinstance(d, dict) and isinstance(d.get("env"), (list, dict)):     # clever-tools 5.2.0: {"env": [{name, value}…], "fromAddons": […], "fromDependencies": […]}
+    d = d["env"]                                                       # the app's own variables only (an add-on's reach the target by linking the add-on)
+if isinstance(d, list):
+    d = {x.get("name"): x.get("value") for x in d if isinstance(x, dict)}
+if not isinstance(d, dict):
+    print("copy: unexpected JSON for %s: nothing copied" % src); sys.exit(4)
+vals = {n: ("" if d.get(n) is None else str(d[n])) for n in names if n in d}
+d = None
+missing = [n for n in names if n not in vals]
+multi = [n for n in names if n in vals and ("\n" in vals[n] or "\r" in vals[n])]
+dashed = [n for n in names if n in vals and vals[n].startswith("-")]
+if dashed:
+    print("copy: refused (names): %s start with '-': the argument parser of clever-tools 5.2.0 reads such a value as an option and would lose it or set `true`; set it in the Console" % " ".join(dashed))
+    sys.exit(6)
+if missing or multi:
+    if missing:
+        print("copy: missing on %s: %s" % (src, " ".join(missing)))
+    if multi:
+        print("copy: multi-line value(s) not copied (names): %s" % " ".join(multi))
+    sys.exit(3)
+for n in names:
+    r = subprocess.run(["clever", "env", "set", n, vals[n]] + alias, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    vals[n] = None
+    if r.returncode != 0:
+        print("clever env set %s failed (value not shown)" % n); sys.exit(4)
+PYC
 }
 
 verify_names() {  # verify_names NAME... : every name present, no stray variables
@@ -155,6 +214,8 @@ try:
 except ValueError:
     print("env-file: unexpected output (not JSON) for %s: nothing written" % what); sys.exit(4)
 txt = None
+if not addon and isinstance(d, dict) and isinstance(d.get("env"), (list, dict)):     # clever-tools 5.2.0 `clever env --format json`: {"env": […], "fromAddons": […], "fromDependencies": […]}
+    d = d["env"]                                                                    # the app's own variables only: an add-on's come with --addon
 if isinstance(d, list):
     d = {x.get("name"): x.get("value") for x in d if isinstance(x, dict)}
 if not isinstance(d, dict):
@@ -167,7 +228,9 @@ if bad:
     for k in bad:
         vals.pop(k)
 if not vals:
-    print("env-file: no variable to write for %s%s" % (what, (" with prefix " + only) if only else "")); sys.exit(3)
+    print("env-file: no variable to write for %s%s%s" % (what, (" with prefix " + only) if only else "",
+          (" — an add-on's variables are not the app's own: env-file --addon <addon_… id> (or its name with --org <orga_… id>)")
+          if not addon and any(re.match(r"[A-Z][A-Z0-9]*_ADDON_[A-Z0-9_]*\Z|REDIS_[A-Z0-9_]*\Z", p_) for p_ in prefixes) else "")); sys.exit(3)      # a prefix, or a full add-on variable name
 import tempfile
 d = os.path.dirname(os.path.abspath(out))
 if os.stat(d).st_mode & 0o022:
@@ -227,6 +290,17 @@ case "$CMD" in
     FMT="$FORMAT" set_values generate "$BYTES" "$NAME"; rc=$?; [ $rc -eq 0 ] || exit $rc
     verify_names "$NAME" || exit 5
     echo "generated and set on the app (value never shown): $NAME"
+    ;;
+  copy)
+    LIST="${ARGS[0]:-}"
+    [ -n "$LIST" ] && [ -n "$FROM_ALIAS" ] && [ ${#ALIAS_ARGS[@]} -gt 0 ] || loc_die "usage: copy NAME1,NAME2 --from SOURCE_ALIAS --alias TARGET_ALIAS"
+    printf '%s' "$FROM_ALIAS" | grep -Eq '^[a-z0-9][a-z0-9-]{0,62}$' || loc_die "copy: --from must be an app alias"
+    [ "$FROM_ALIAS" != "${ALIAS_ARGS[1]}" ] || loc_die "copy: --from and --alias are the same app"
+    OLDIFS="$IFS"; IFS=','; set -f; set -- $LIST; set +f; IFS="$OLDIFS"
+    for n in "$@"; do push_name "$n" || exit 2; done
+    copy_values "$@"; rc=$?; [ $rc -eq 0 ] || exit $rc
+    verify_names "$@" || exit 5
+    echo "copied from $FROM_ALIAS to ${ALIAS_ARGS[1]} (values never shown): $*"
     ;;
   verify)
     LIST="${ARGS[0]:-}"; [ -n "$LIST" ] || loc_die "usage: verify NAME1,NAME2"

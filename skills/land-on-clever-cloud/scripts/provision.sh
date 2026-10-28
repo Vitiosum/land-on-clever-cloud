@@ -6,7 +6,9 @@
 #                     [--without COMPONENT[,..]] [--allow-dev-plan] [--json] --dry-run
 #   bash provision.sh --plan PLAN.json ... --approve TOKEN        (really creates)
 #
-#   --dry-run       print the exact ordered commands (and an approval token); runs nothing.
+#   --dry-run       print the exact ordered commands (and an approval token); runs nothing. With no complete price
+#                   (grid unreachable, an answer with no usable price, or an item the grid does not price) it prints no
+#                   price and no token, and --approve is refused: no yes on an unknown or incomplete price.
 #                   Read-only checks (existing apps/add-ons) are done when the CLI is available.
 #   --approve TOKEN run them. TOKEN comes from the dry run: a hash of the exact commands, the price
 #                   written in plan.json (grid read by plan.py, with its time), the skill's scripts
@@ -28,7 +30,9 @@
 #   --without X     "go without X": skip these components
 #   --allow-dev-plan accept DEV database plans (unencrypted, no backups) for a throwaway trial;
 #                   always refused in HDS zones
-#   --no-live       do not call the CLI for read-only checks (offline dry run; the selftest uses it)
+#   --no-live       do not call the CLI for read-only checks (offline dry run; the selftest uses it). Dry runs only:
+#                   it skips the price and the checks on existing apps and reused add-ons, so --approve is refused
+#                   with it outside the selftest
 #   --cache-dir DIR catalog cache (default $XDG_CACHE_HOME or ~/.cache; refused inside a git tree)
 #   LOC_BACKOFF_SCALE (environment, selftest only) shortens the rate-limit waits; --max-wait still caps them
 #

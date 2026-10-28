@@ -7,11 +7,12 @@
 #
 #   CC_PRE_RUN_HOOK="bash clevercloud/cron-env.sh"
 #   CRON_VARIABLES="CRON_SECRET"            # NAMES of the app variables the job needs, space-separated
+#   CRON_RUNS_HERE=1                        # on the ONE app that runs the jobs (see cron-job.sh)
 #
 # THE TRAP IT SOLVES: jobs of clevercloud/cron.json run with an EMPTY environment (HOME, LC_*,
 # LOGNAME, PATH, PWD, SHELL, SHLVL, USER only): no app variable, no INSTANCE_NUMBER, no PORT
 # (observed with a debug job, 2026-10-25). The hook runs in the instance's environment: it copies
-# INSTANCE_NUMBER, PORT, CRON_BASE_URL, CRON_TOKEN_VAR and CRON_NO_TOKEN when set, plus every name
+# INSTANCE_NUMBER, PORT, CRON_BASE_URL, CRON_TOKEN_VAR, CRON_NO_TOKEN and CRON_RUNS_HERE when set, plus every name
 # listed in CRON_VARIABLES, into clevercloud/.cron-env (mode 600), which cron-job.sh sources. A
 # listed name absent from the instance gives a warning (name only) in the start logs.
 #
@@ -33,7 +34,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 fi
 HERE="$(cd "$(dirname "$0")" && pwd)"
 FILE="$HERE/.cron-env"
-NAMES="INSTANCE_NUMBER PORT CRON_BASE_URL CRON_TOKEN_VAR CRON_NO_TOKEN ${CRON_VARIABLES:-}"
+NAMES="INSTANCE_NUMBER PORT CRON_BASE_URL CRON_TOKEN_VAR CRON_NO_TOKEN CRON_RUNS_HERE ${CRON_VARIABLES:-}"
 # the runtime of the app (interpreter and dependencies), copied when set
 RUNTIME_NAMES="PATH PYTHONPATH VIRTUAL_ENV NODE_PATH GEM_HOME GEM_PATH BUNDLE_PATH JAVA_HOME GOPATH"
 APP_DIR="$(cd "$HERE/.." && pwd)"

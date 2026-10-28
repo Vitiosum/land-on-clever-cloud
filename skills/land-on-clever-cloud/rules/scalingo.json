@@ -25,7 +25,7 @@
       "opensearch": "elasticsearch"
     },
     "formation": "sizes (S, M, 2XL…) → Clever flavors: start nano + build M for the POC, size from metrics afterwards",
-    "postdeploy": "scripts.postdeploy → CC_POST_BUILD_HOOK / CC_PYTHON_MANAGE_TASKS / CC_PRE_RUN_HOOK (idempotent)"
+    "postdeploy": "scripts.postdeploy → CC_POST_BUILD_HOOK (once per deploy) / CC_PYTHON_MANAGE_TASKS (Django)"
   },
   "traps": [
     "Same buildpack model as Heroku: Procfile processes map to CC_RUN_COMMAND / CC_WORKER_COMMAND.",

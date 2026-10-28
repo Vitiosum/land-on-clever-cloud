@@ -1,9 +1,10 @@
 {
-  "_doc": "What a landing would LOSE or have to MOVE, per provenance, plus generic couplings that apply to every repository. scan.sh evaluates the entries of every detected provenance and the generic ones (path / dep / code, same matching as `detect`; `content` filters a path match). plan.py lists them on the 'What would be lost or must move' line of a report-only Vision, and as [assumed] lines in a plan. kind: data | files | baas | cron | platform-api | config | process. Effort S/M/L/XL as in decision-rules.md.",
+  "_doc": "What a landing would LOSE or have to MOVE, per provenance, plus generic couplings that apply to every repository. scan.sh evaluates the entries of every detected provenance and the generic ones (path / dep / code, same matching as `detect`; `content` filters a path match). plan.py lists them on the 'What would be lost or must move' line of a report-only Vision, and as [assumed] lines in a plan. kind: data | files | baas | cron | platform-api | config | process. Effort S/M/L/XL as in decision-rules.md. `simulable`: a Kubernetes workload (StatefulSet, PersistentVolumeClaim, CronJob) that scan.sh does NOT count when its OWN folder's README says the folder simulates a database and no manifest of that folder runs a database image (podinfo's deploy/bases/database); no other entry, and no README of an ancestor, ever hides a coupling.",
   "generic": [
     {"code": "sqlite3\\.connect\\(|new\\s+(Database|sqlite3\\.Database)\\(|better-sqlite3|['\"]sqlite:///|provider\\s*=\\s*\"sqlite\"|ENGINE['\"]?\\s*:\\s*['\"]django\\.db\\.backends\\.sqlite3", "code_only": true, "kind": "data", "what": "SQLite database on local disk (lost at every redeploy on Clever: the disk is ephemeral)", "target": "PostgreSQL add-on (encrypted) + data migration (scripts/migrate-sqlite.py, row counts proven); or SQLite on an FS Bucket, one instance, never in HDS", "effort": "M"},
     {"code": "\\.save\\(\\s*os\\.path\\.join|send_from_directory\\([^)]*(?i:upload|media|photo)|multer\\(\\s*\\{?\\s*dest|diskStorage\\(|provider-upload-local|['\"]public/uploads|MEDIA_ROOT\\s*=", "code_only": true, "kind": "files", "what": "uploaded files written to local disk (lost at every redeploy)", "target": "Cellar (S3) + code change at each call site; existing files copied with scripts/migrate-files.py --source-dir (SHA-256 manifest)", "effort": "M"},
     {"path": "(^|/)(crontab|[^/]*\\.cron|cron\\.d/[^/]+)$", "kind": "cron", "what": "crontab entries (not run anywhere on Clever unless rewritten)", "target": "clevercloud/cron.json + templates/cron/ (empty job environment, one instance)", "effort": "S"},
+    {"path": "(^|/)Procfile$", "content": "(?m)^(?:beat|clock|cron|scheduler):", "kind": "process", "what": "a beat / clock / scheduler process (periodic tasks)", "target": "an app of its own with ONE instance (min == max == 1), deployed last, with the web app's secrets copied (env-safe.sh copy) and its default domain removed after its first deploy: a beat per instance, with no lock, runs every task N times (test T2); the main worker stays on the web app and the native Celery variables also start a small worker next to the beat; tasks idempotent", "effort": "S"},
     {"path": "(^|/)[^/]+\\.service$", "content": "(?m)^ExecStart=", "kind": "process", "what": "systemd service (ExecStart, Environment=): the process and its variables", "target": "the app's start command (runtime variables) + Clever environment variables (names only)", "effort": "S"},
     {"path": "(^|/)(supervisord?|[^/]*supervisor[^/]*)(\\.d)?/?[^/]*\\.conf$|(^|/)supervisor/[^/]+\\.conf$", "kind": "process", "what": "supervisor programs (long-running processes next to the web server)", "target": "CC_WORKER_COMMAND_n on the app (not with Docker)", "effort": "S"}
   ],
@@ -27,7 +28,7 @@
     {"path": "(^|/)fly\\.toml$", "content": "\\[\\[mounts\\]\\]|\\[mounts\\]", "kind": "data", "what": "Fly volume ([[mounts]]): data on a persistent disk", "target": "FS Bucket mounted on that path (one instance, never in HDS) or a database", "effort": "M"},
     {"path": "(^|/)render\\.ya?ml$", "content": "generateValue|sync:\\s*false|fromDatabase", "kind": "config", "what": "render.yaml variables (generated secrets, values to provide, database properties)", "target": "env-safe.sh generate / values to provide / add-on variables", "effort": "S"},
     {"path": "(^|/)render\\.ya?ml$", "content": "runtime:\\s*static|env:\\s*static", "kind": "process", "what": "a static site service (build + publish dir, SPA rewrite)", "target": "Clever static runtime (CC_BUILD_COMMAND, CC_WEBROOT, Caddyfile for the SPA fallback)", "effort": "S"},
-    {"path": "(^|/)render\\.ya?ml$", "content": "preDeployCommand|dockerCommand|startCommand", "kind": "process", "what": "start / pre-deploy commands (migrations, initial data)", "target": "CC_PRE_RUN_HOOK and the start command", "effort": "S"},
+    {"path": "(^|/)render\\.ya?ml$", "content": "preDeployCommand|dockerCommand|startCommand", "kind": "process", "what": "start / pre-deploy commands (migrations, initial data)", "target": "CC_POST_BUILD_HOOK for a migration (once per deploy: CC_PRE_RUN_HOOK runs once per instance, test T5) and the start command", "effort": "S"},
     {"path": "(^|/)render\\.ya?ml$", "content": "(?m)^\\s*disk:", "kind": "data", "what": "a Render persistent disk", "target": "FS Bucket (one instance, never in HDS) or Cellar", "effort": "M"}
   ],
   "railway": [
@@ -35,7 +36,7 @@
     {"code": "(?i)be persisted|railway volume", "kind": "data", "what": "a Railway volume may hold data the repository does not show (e.g. uploaded media)", "target": "Cellar or an FS Bucket — check the project's volumes", "effort": "M"}
   ],
   "platformsh-upsun": [
-    {"path": "(^|/)\\.platform\\.app\\.yaml$|^\\.upsun/config\\.yaml$", "content": "(?m)^\\s*deploy:", "kind": "process", "what": "deploy hook (migrations, caches)", "target": "CC_PRE_RUN_HOOK (or CC_POST_BUILD_HOOK for the caches)", "effort": "S"},
+    {"path": "(^|/)\\.platform\\.app\\.yaml$|^\\.upsun/config\\.yaml$", "content": "(?m)^\\s*deploy:", "kind": "process", "what": "deploy hook (migrations, caches)", "target": "CC_POST_BUILD_HOOK (once per deploy, test T5); CC_PRE_RUN_HOOK only for what is idempotent and needed on every instance", "effort": "S"},
     {"path": "(^|/)\\.platform\\.app\\.yaml$|^\\.upsun/config\\.yaml$", "content": "(?m)^workers:", "kind": "process", "what": "workers (queue, scheduler)", "target": "CC_WORKER_COMMAND_n, or clevercloud/cron.json for the scheduler", "effort": "S"},
     {"path": "(^|/)\\.platform\\.app\\.yaml$|^\\.upsun/config\\.yaml$", "content": "(?m)^mounts:", "kind": "files", "what": "persistent mounts (uploaded files)", "target": "FS Bucket (PHP) or Cellar + file migration", "effort": "M"},
     {"path": "(^|/)\\.platform\\.app\\.yaml$|^\\.upsun/config\\.yaml$", "content": "(?m)^crons:", "kind": "cron", "what": "Platform.sh crons", "target": "clevercloud/cron.json + templates/cron/", "effort": "S"},
@@ -43,9 +44,9 @@
   ],
   "kubernetes": [
     {"path": "\\.ya?ml$", "content": "(?m)^kind:\\s*Secret\\b", "kind": "config", "what": "Kubernetes Secrets (values not in the repository)", "target": "Clever environment variables (names only; values provided)", "effort": "S"},
-    {"path": "\\.ya?ml$", "content": "(?m)^kind:\\s*PersistentVolumeClaim\\b", "kind": "data", "what": "PersistentVolumeClaims (data on persistent volumes)", "target": "a database add-on, Cellar or an FS Bucket", "effort": "M"},
-    {"path": "\\.ya?ml$", "content": "(?m)^kind:\\s*CronJob\\b", "kind": "cron", "what": "CronJobs", "target": "clevercloud/cron.json or Clever Tasks", "effort": "S"},
-    {"path": "\\.ya?ml$", "content": "(?m)^kind:\\s*(StatefulSet)\\b", "kind": "data", "what": "StatefulSets (databases or caches run in the cluster)", "target": "managed add-ons", "effort": "M"}
+    {"path": "\\.ya?ml$", "content": "(?m)^kind:\\s*PersistentVolumeClaim\\b", "simulable": true, "kind": "data", "what": "PersistentVolumeClaims (data on persistent volumes)", "target": "a database add-on, Cellar or an FS Bucket", "effort": "M"},
+    {"path": "\\.ya?ml$", "content": "(?m)^kind:\\s*CronJob\\b", "simulable": true, "kind": "cron", "what": "CronJobs", "target": "clevercloud/cron.json or Clever Tasks", "effort": "S"},
+    {"path": "\\.ya?ml$", "content": "(?m)^kind:\\s*(StatefulSet)\\b", "simulable": true, "kind": "data", "what": "StatefulSets (databases or caches run in the cluster)", "target": "managed add-ons", "effort": "M"}
   ],
   "terraform-aws": [
     {"path": "\\.tf$", "content": "resource\\s+\"aws_lambda_function\"", "kind": "platform-api", "what": "AWS Lambda functions (scale to zero, event triggers)", "target": "a small HTTP server calling the handler (S per handler), or Clever Tasks", "effort": "S"},
@@ -58,7 +59,7 @@
   "gcp-azure": [
     {"code": "\\bAZURE_POSTGRESQL_[A-Z_]+", "kind": "config", "what": "AZURE_POSTGRESQL_* variables (App Service connector)", "target": "code change: read POSTGRESQL_ADDON_* (Clever add-on)", "effort": "S"},
     {"code": "\\bWEBSITE_HOSTNAME\\b", "kind": "config", "what": "production settings switched on by WEBSITE_HOSTNAME (App Service only): elsewhere the dev settings load", "target": "an explicit switch (e.g. APP_ENV=production) set on Clever", "effort": "S"},
-    {"path": "(^|/)startup\\.sh$", "content": "db upgrade|migrate|alembic", "kind": "process", "what": "startup script with migrations", "target": "CC_PRE_RUN_HOOK", "effort": "S"},
+    {"path": "(^|/)startup\\.sh$", "content": "db upgrade|migrate|alembic", "kind": "process", "what": "startup script with migrations", "target": "CC_POST_BUILD_HOOK (once per deploy, test T5)", "effort": "S"},
     {"code": "@Microsoft\\.KeyVault|keyvault|SecretClient\\(", "kind": "config", "what": "Key Vault references", "target": "Clever environment variables (names only)", "effort": "S"}
   ],
   "beanstalk-amplify": [
@@ -82,7 +83,7 @@
   "coolify-dokku-caprover": [
     {"path": "(^|/)DOKKU_SCALE$", "kind": "process", "what": "DOKKU_SCALE: the processes really started (others at 0)", "target": "only those processes on Clever; the others optional", "effort": "S"},
     {"path": "(^|/)CHECKS$", "kind": "config", "what": "Dokku CHECKS (deploy health checks)", "target": "CC_HEALTH_CHECK_PATH", "effort": "S"},
-    {"path": "(^|/)Procfile$", "content": "(?m)^release:", "kind": "process", "what": "a release process (migrations)", "target": "CC_PYTHON_MANAGE_TASKS (Django) or CC_PRE_RUN_HOOK", "effort": "S"}
+    {"path": "(^|/)Procfile$", "content": "(?m)^release:", "kind": "process", "what": "a release process (migrations)", "target": "CC_PYTHON_MANAGE_TASKS (Django, legacy mode: once per build, test T2) or CC_POST_BUILD_HOOK (uv mode, other stacks: once per deploy, test T5)", "effort": "S"}
   ],
   "appwrite-pocketbase": [
     {"path": "(^|/)pb_(hooks|migrations)/", "kind": "data", "what": "PocketBase data in pb_data (SQLite on disk)", "target": "FS Bucket mounted for pb_data, one instance, never in HDS (no FS Bucket with Docker: native Go build)", "effort": "M"},
