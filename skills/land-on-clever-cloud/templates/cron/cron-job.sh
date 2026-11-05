@@ -1,6 +1,6 @@
 #!/bin/bash
 # ---------------------------------------------------------------------------
-# cron-job.sh — run one scheduled HTTP call of the app, on ONE instance only.
+# cron-job.sh — run one scheduled HTTP call of the app, on instance 0 only (a first filter: see below).
 #
 #   cron-job.sh METHOD PATH        e.g.  cron-job.sh GET /api/cron     cron-job.sh POST /tasks/purge-log
 #   cron-job.sh run COMMAND [ARG…] e.g.  cron-job.sh run python purge.py   (a script of the app, run from
@@ -11,18 +11,27 @@
 #   ["0 6 * * * $ROOT/clevercloud/cron-job.sh GET /api/cron"]
 #
 # THE TRAPS IT SOLVES
-# - Clever crons run on EVERY instance: with three instances the job runs three times. The only
-#   documented deduplication is a test on INSTANCE_NUMBER: the job runs on instance 0 only.
+# - Clever crons run on EVERY instance: with three instances the job runs three times. The job runs
+#   on instance 0 only: a first filter, not a guarantee (last trap below).
 # - The job's environment is EMPTY: the variables come from clevercloud/.cron-env, written at
 #   start by cron-env.sh (CC_PRE_RUN_HOOK). Without that file, or without INSTANCE_NUMBER in it,
 #   the job stops with an error (visible in `clever logs --until now`) rather than run N times.
 # - clevercloud/cron.json is part of the code, so it is deployed to EVERY app built from the repository (a beat / scheduler app
 #   split from the web app, a second service…): the jobs run only on the app that carries CRON_RUNS_HERE=1 (set on that one app,
 #   copied to clevercloud/.cron-env by cron-env.sh). Elsewhere the job exits 0 with one line saying so — no error, nothing run.
-#   Without the marker nothing runs anywhere: set it on the designated app. The instance-0 rule below still applies on it.
-# - Zero-downtime deploys: for a few minutes the old and the new instance carry the same
-#   INSTANCE_NUMBER, so a job can run twice: make the task idempotent or locked
-#   (pg_try_advisory_lock on the API side), or disable zero-downtime.
+#   Without the marker nothing runs anywhere: set it on the designated app. The instance-0 filter still applies on it.
+# - Instance 0 does not make a job run once (verified on Clever Cloud, 2026-11-04): during a deploy, a
+#   scale-up (`clever scale --instances 2` is an UPSCALE: new instances, the old one stops about 2 min
+#   later) or a `clever restart`, the old instance and its replacement can BOTH have INSTANCE_NUMBER=0
+#   for a while, so a job can run twice. Disabling zero-downtime does not cover a scale-up or a restart;
+#   pg_try_advisory_lock alone only serialises overlapping runs. What makes it safe: the job (usually
+#   the route it calls) is idempotent per slot. PostgreSQL: a table with primary key (job, slot), and
+#     insert into cron_runs (job, slot) values ('purge', date_bin('15 minutes',
+#       now() + interval '7 minutes 30 seconds', timestamptz '2000-01-01 00:00+00'))
+#       on conflict do nothing returning slot;
+#   (the database computes the slot: the nearest 15-minute boundary, so a slight clock skew lands on
+#   the same slot); a call that gets no row returns success without doing the work. Redis:
+#   SET <job>:<slot> 1 NX EX <period in seconds>; no OK → same.
 #
 # Target: CRON_BASE_URL (e.g. an internal API URL) if set, else http://127.0.0.1:$PORT (the app
 # itself). Secret: the variable NAMED by CRON_TOKEN_VAR (default CRON_SECRET) is REQUIRED for the
@@ -53,11 +62,11 @@ if [[ "${CRON_RUNS_HERE:-}" != "1" ]]; then
   exit 0
 fi
 if [[ -z "${INSTANCE_NUMBER:-}" ]]; then
-  echo "INSTANCE_NUMBER unknown: no deduplication possible, job refused (plan a lock in the database)" >&2
+  echo "INSTANCE_NUMBER unknown: the instance-0 filter is impossible, job refused (is CC_PRE_RUN_HOOK=\"bash clevercloud/cron-env.sh\" set?)" >&2
   exit 1
 fi
 if [[ "$INSTANCE_NUMBER" != "0" ]]; then
-  echo "instance ${INSTANCE_NUMBER}: job skipped (deduplication)"
+  echo "instance ${INSTANCE_NUMBER}: job skipped (instance 0 runs it; a first filter only: the job stays idempotent per slot)"
   exit 0
 fi
 

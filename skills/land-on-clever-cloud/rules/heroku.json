@@ -56,7 +56,7 @@
       },
       "clock": {
         "target": "native",
-        "detail": "clevercloud/cron.json + job script (empty cron environment: variables from a 600 file written by CC_PRE_RUN_HOOK, guard ${INSTANCE_NUMBER:-0}) or CC_WORKER_COMMAND"
+        "detail": "clevercloud/cron.json + job script (empty cron environment: variables from a 600 file written by CC_PRE_RUN_HOOK, instance 0 as a first filter, the job idempotent per slot) or CC_WORKER_COMMAND"
       },
       "beat": {
         "target": "native",

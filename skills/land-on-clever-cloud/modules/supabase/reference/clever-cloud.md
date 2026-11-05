@@ -248,10 +248,22 @@ Three documented restrictions, and two that matter:
 3. **No clustering** of jobs.
 4. **Crons run on EVERY scaler.** With several instances, the
    same job runs several times: **deduplication is up to the
-   user**, and the only documented method is a test on
-   `INSTANCE_NUMBER`. **With zero-downtime**, old and new instance
-   carry the same number for a few minutes: disable
-   zero-downtime, or make the jobs idempotent or locked in the database.
+   user**. The documented test on `INSTANCE_NUMBER` (instance 0
+   only) is a **first filter, not a guarantee** (verified on Clever
+   Cloud, 2026-11-04): during a deploy, a scale-up
+   (`clever scale --instances 2` is an UPSCALE: new instances, the old
+   one stops about 2 min later) or a `clever restart`, the old instance and its
+   replacement can both have `INSTANCE_NUMBER=0` for a while, so a job
+   can run twice. Disabling zero-downtime does not cover a scale-up or
+   a restart; `pg_try_advisory_lock` alone only serialises overlapping
+   runs. What makes it safe: the job (usually the `/tasks/<name>`
+   route) is **idempotent per slot** — a table with primary key
+   `(job, slot)`, `insert … on conflict do nothing returning`, the slot
+   computed by the database at the nearest period boundary
+   (`date_bin('15 minutes', now() + interval '7 minutes 30 seconds', timestamptz '2000-01-01 00:00+00')`,
+   so a slight clock skew lands on the same slot); a call that gets no
+   row returns success without doing the work. Redis:
+   `SET <job>:<slot> 1 NX EX <period>`.
 5. **A job runs with an EMPTY environment** (`HOME`, `LC_*`, `LOGNAME`,
    `PATH`, `PWD`, `SHELL`, `SHLVL`, `USER` only): neither the application's
    variables, nor `INSTANCE_NUMBER`, nor `PORT` (environment printed by
@@ -262,12 +274,12 @@ Three documented restrictions, and two that matter:
    `CRON_VARIABLES="API_SERVICE_TOKEN"`), plus `INSTANCE_NUMBER`, `PORT`,
    `CRON_BASE_URL`, `CRON_TOKEN_VAR` and `CRON_RUNS_HERE` (`1` on the one app that runs the jobs: `cron-job.sh` skips the job, exit 0, on any other app built from the repository), into `clevercloud/.cron-env` (mode `600`,
    ignored by git), which `cron-job.sh` sources. `cron-job.sh POST /tasks/<name>`
-   runs on instance 0 only, calls `CRON_BASE_URL` (e.g. the internal API URL;
+   runs on instance 0 only (the filter of item 4), calls `CRON_BASE_URL` (e.g. the internal API URL;
    default `http://127.0.0.1:$PORT`) with the token of the variable named by
    `CRON_TOKEN_VAR` (e.g. `CRON_TOKEN_VAR=API_SERVICE_TOKEN`) as a Bearer header;
    without `.cron-env`, the job stops with an error instead of running N times.
    Defaults of the code: `CRON_TOKEN_VAR` → `CRON_SECRET`; `PORT` → `8080`;
-   no `INSTANCE_NUMBER` → job refused (no deduplication possible); the token is
+   no `INSTANCE_NUMBER` → job refused (no instance-0 filter possible); the token is
    **required** — an empty or missing token stops the job before any call
    (`CRON_NO_TOKEN=1` only for a route that is public on purpose); a name listed
    in `CRON_VARIABLES` but absent from the instance gives a warning in the start

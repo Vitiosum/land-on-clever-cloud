@@ -67,9 +67,9 @@ folder, executable (`git update-index --chmod=+x`), and set three variables (nam
 |---|---|
 | `clevercloud/cron.json` | JSON array of strings, `$ROOT` substituted by Clever, UTC: `["0 6 * * * $ROOT/clevercloud/cron-job.sh GET /api/cron"]` |
 | `clevercloud/cron-env.sh` (`templates/cron/cron-env.sh`) | run by `CC_PRE_RUN_HOOK="bash clevercloud/cron-env.sh"` at each start: writes `INSTANCE_NUMBER`, `PORT`, the names listed in `CRON_VARIABLES` **and the runtime's own `PATH`** (plus `PYTHONPATH`, `VIRTUAL_ENV`, `NODE_PATH`, `GEM_*`, `BUNDLE_PATH`, `JAVA_HOME`, `GOPATH` when set; `node_modules/.bin` after it) to `clevercloud/.cron-env` (mode 600) — without them a job runs the SYSTEM python, without the app's dependencies (`ModuleNotFoundError`, observed 2026-10-25); it prints the `python3` / `node` the jobs will use in the start logs |
-| `clevercloud/cron-job.sh` (`templates/cron/cron-job.sh`) | sources `.cron-env`, refuses without `INSTANCE_NUMBER`, runs on instance 0 only, calls `METHOD PATH` on `CRON_BASE_URL` or `http://127.0.0.1:$PORT` with the secret (variable named by `CRON_TOKEN_VAR`, default `CRON_SECRET`; **required** — the job stops without it, `CRON_NO_TOKEN=1` for a route public on purpose) in a 600 header file read by `curl -H @file`; `cron-job.sh run COMMAND…` runs the app's own command (no route, no token) |
+| `clevercloud/cron-job.sh` (`templates/cron/cron-job.sh`) | sources `.cron-env`, refuses without `INSTANCE_NUMBER`, runs on instance 0 only (a first filter: see *Run once* below), calls `METHOD PATH` on `CRON_BASE_URL` or `http://127.0.0.1:$PORT` with the secret (variable named by `CRON_TOKEN_VAR`, default `CRON_SECRET`; **required** — the job stops without it, `CRON_NO_TOKEN=1` for a route public on purpose) in a 600 header file read by `curl -H @file`; `cron-job.sh run COMMAND…` runs the app's own command (no route, no token) |
 | `CRON_VARIABLES="CRON_SECRET"` | the names the job needs; the values stay app variables |
-| `CRON_RUNS_HERE=1` | on the ONE app that runs the jobs: `clevercloud/cron.json` is deployed to every app built from the repository (a beat / scheduler app split from the web app), so `cron-job.sh` runs the job only where this marker is in `.cron-env`, and exits 0 with one line elsewhere (no error); the instance-0 rule still applies on the designated app |
+| `CRON_RUNS_HERE=1` | on the ONE app that runs the jobs: `clevercloud/cron.json` is deployed to every app built from the repository (a beat / scheduler app split from the web app), so `cron-job.sh` runs the job only where this marker is in `.cron-env`, and exits 0 with one line elsewhere (no error); the instance-0 filter still applies on the designated app |
 
 Add `clevercloud/.cron-env` to `.gitignore`. The job output is in the app logs as `CMD` /
 `CMDOUT` / `CMDEND` lines: `prove.sh --alias <alias> --cron-expect "<text of the output>"`.
@@ -88,6 +88,28 @@ function authorized(req: Request): boolean {
 }
 ```
 Python: `hmac.compare_digest(got, want)`; Go: `subtle.ConstantTimeCompare`; PHP: `hash_equals`.
+
+### Run once: the job is idempotent per slot
+
+Instance 0 is a first filter only (verified on Clever Cloud, 2026-11-04): crons run on every instance,
+and during a deploy, a scale-up (`clever scale --instances 2` is an UPSCALE: new instances, the old one
+stops about 2 min later) or a `clever restart`, the old instance and its replacement can both have
+`INSTANCE_NUMBER=0` for a while, so a job can run twice. Disabling zero-downtime does not cover a
+scale-up or a restart; a `pg_try_advisory_lock` alone only serialises overlapping runs, it does not stop
+two successive runs of the same slot. What makes it safe: the job (usually the app route the cron calls)
+is idempotent per slot, and a call that finds its slot taken returns success without doing the work.
+
+- PostgreSQL: a table with primary key `(job, slot)`; the slot is computed by the database, at the
+  nearest period boundary, so a slight clock skew lands on the same slot (here a 15-minute job):
+  ```sql
+  create table if not exists cron_runs (job text, slot timestamptz, primary key (job, slot));
+  insert into cron_runs (job, slot)
+    values ('purge', date_bin('15 minutes', now() + interval '7 minutes 30 seconds', timestamptz '2000-01-01 00:00+00'))
+    on conflict do nothing returning slot;   -- no row: already done, return 200 without the work
+  ```
+- Redis: `SET <job>:<slot> 1 NX EX <period in seconds>` (the same rounded slot); no `OK`: already done.
+
+`prove.sh --cron-wait` warns when the same output shows twice: the job ran on two instances.
 
 ### Proving the job before stopping the app
 

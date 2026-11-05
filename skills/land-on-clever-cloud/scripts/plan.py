@@ -287,6 +287,7 @@ def fit_name(base, part, maxlen=63):
     return "%s-%s-%s" % (base, cut, h)
 
 
+CRON_ONCE_FACT = "two instances can have INSTANCE_NUMBER=0 for a while during a deploy, a scale-up or a clever restart (verified on Clever Cloud, 2026-11-04)"
 CRON_PROOF_COST = ("job run not proven until it shows in the logs; proving it costs 2 extra deploys "
                    "(a temporary */2 schedule on clever-poc, then the original schedule back): 2 builds, say it first")
 
@@ -1466,7 +1467,7 @@ class Planner:
             if seg:
                 cfg["CC_PRE_RUN_HOOK"] = seg
                 mine.append("clevercloud/cron.json is part of the code deployed here too, so its jobs would run on this app as well: CRON_RUNS_HERE=1 is set on %s alone, cron-job.sh skips the job anywhere "
-                            "else (and keeps its instance-0 rule on the designated app)" % web["id"])
+                            "else (and keeps its instance-0 filter on the designated app)" % web["id"])
             # no domain: the web app's routes (an env route included) should not be republished — but the removal of a default domain is IRREVERSIBLE (common.DEFAULT_DOMAIN_GONE):
             # an action that needs the developer's explicit yes, like the env route's closure, never a routine step; declined, the app keeps serving them on that domain
             alias = re.sub(r"[^a-z0-9-]+", "-", c["id"].lower())
@@ -1487,7 +1488,8 @@ class Planner:
                 "kind": "clever", "optional": True, "when": "after the first deploy of %s" % alias, "command": "clever config set zero-downtime false --alias %s" % alias,
                 "why": "zero-downtime is ON by default (check it: clever config get zero-downtime --alias %s; test T6): the old instance then runs about 2 min next to the new one, so "
                        "the scheduler runs twice (test T2). Off, the old instance stops first and the periodic tasks pause during the deploy instead; nothing serves users from this app. "
-                       "Not measured on a scheduler app" % alias})
+                       "It does not cover a scale-up or a clever restart, where the old and the new instance overlap too (verified on Clever Cloud, 2026-11-04): the periodic tasks "
+                       "stay idempotent. Not measured on a scheduler app" % alias})
             c["evidence"] = lead + c["evidence"] + ours
             c["assumed"] = mine + ["the dedicated app is the solution test T2 proposed, not one it measured: check in the app's logs that each periodic task fires once"] + c["assumed"]
 
@@ -2020,8 +2022,10 @@ class Planner:
                  (" (%s)" % secret) if secret else "")},
             {"file": pre + "clevercloud/cron-job.sh", "line": None, "effort": "S",
              "short": "new: copy of templates/cron/cron-job.sh: instance 0 only, calls GET %s on 127.0.0.1:$PORT%s" % (path, " with the Bearer secret from a 600 header file" if secret else ""),
-             "what": "the job sources clevercloud/.cron-env, runs only on the app that carries CRON_RUNS_HERE=1 (set by the plan: cron.json is deployed to every app of the repository), refuses without INSTANCE_NUMBER, runs on instance 0 only, then calls GET %s on http://127.0.0.1:${PORT:-8080}%s; its output appears in the app logs (CMD/CMDOUT/CMDEND lines)" % (
-                 path, (" with `Authorization: Bearer $%s` read by curl -H @<600 temp file> (never on curl's command line)" % secret) if secret else "")},
+             "what": "the job sources clevercloud/.cron-env, runs only on the app that carries CRON_RUNS_HERE=1 (set by the plan: cron.json is deployed to every app of the repository), refuses without INSTANCE_NUMBER, runs on instance 0 only, then calls GET %s on http://127.0.0.1:${PORT:-8080}%s; its output appears in the app logs (CMD/CMDOUT/CMDEND lines). "
+                     "Instance 0 is a first filter only: %s, so GET %s stays idempotent per slot ((job, slot) primary key in PostgreSQL, or SET <job>:<slot> 1 NX EX <period> in Redis: "
+                     "reference/runtimes-hooks.md)" % (
+                 path, (" with `Authorization: Bearer $%s` read by curl -H @<600 temp file> (never on curl's command line)" % secret) if secret else "", CRON_ONCE_FACT, path)},
             {"file": pre + ".gitignore", "line": None, "effort": "S", "short": "ignore clevercloud/.cron-env",
              "what": "add clevercloud/.cron-env to .gitignore (written at each start on the instance, it holds the job's variables)"},
         ]
@@ -2240,7 +2244,8 @@ class Planner:
                   {"file": pre + "clevercloud/cron-env.sh", "line": None, "effort": "S", "short": "new: copy of templates/cron/cron-env.sh (CC_PRE_RUN_HOOK)",
                    "what": "jobs run with an EMPTY environment: cron-env.sh writes INSTANCE_NUMBER, PORT and CRON_VARIABLES (%s) to clevercloud/.cron-env (600)" % (", ".join(names) or "none")},
                   {"file": pre + "clevercloud/cron-job.sh", "line": None, "effort": "S", "short": "new: copy of templates/cron/cron-job.sh (run mode, instance 0 only)",
-                   "what": "cron-job.sh run <command>: sources .cron-env, runs only on the app that carries CRON_RUNS_HERE=1 (set by the plan), on instance 0 only, from the app folder"},
+                   "what": "cron-job.sh run <command>: sources .cron-env, runs only on the app that carries CRON_RUNS_HERE=1 (set by the plan), on instance 0 only, from the app folder. "
+                           "Instance 0 is a first filter only: %s, so the command stays idempotent per slot (reference/runtimes-hooks.md)" % CRON_ONCE_FACT},
                   {"file": pre + ".gitignore", "line": None, "effort": "S", "short": "ignore clevercloud/.cron-env", "what": "add clevercloud/.cron-env to .gitignore"}]
             jobfiles = sorted(set(re.findall(r"\b([\w/.-]+\.py)\b", " ".join(c_ for _, c_ in lines_))))
             for jf in jobfiles:
@@ -2252,7 +2257,7 @@ class Planner:
             assumed = [("the VM's time zone is %s (read: CRON_TZ/TZ of the crontab): " % tz if tz else
                         "the VM's time zone is assumed Europe/Paris (check `timedatectl` on the VM): ") + o for o in offers[:2]]
             cj = self.add(id="cron", kind="job", today="crontab: " + ", ".join(cr["schedule"] for cr, _ in lines_), target="native", effort="S",
-                          detail="clevercloud/cron.json + templates/cron/ (run mode: one instance, empty environment handled)",
+                          detail="clevercloud/cron.json + templates/cron/ (run mode: instance 0 first, empty environment handled; the command idempotent per slot)",
                           evidence=["[read] " + ref(cr["file"], cr["line"]) for cr, _ in lines_[:2]], changes=ch, assumed=assumed + [CRON_PROOF_COST])
             handled.add("cron")
         handled |= {"process"}

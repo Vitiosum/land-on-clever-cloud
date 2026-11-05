@@ -705,7 +705,10 @@ Next:
      On the app: CC_PRE_RUN_HOOK="bash clevercloud/cron-env.sh", CRON_RUNS_HERE=1,
      CRON_VARIABLES="<names the job needs>", CRON_BASE_URL (e.g. the internal
      API URL), CRON_TOKEN_VAR=<name of the token variable>. A job runs with an
-     EMPTY environment, no variables and no INSTANCE_NUMBER. Scripts executable
+     EMPTY environment, no variables and no INSTANCE_NUMBER. Instance 0 is a
+     first filter only (a deploy, a scale-up or a restart can run a job twice):
+     the /tasks/<name> route stays idempotent per slot
+     (modules/supabase/reference/clever-cloud.md §3 CRON). Scripts executable
      BEFORE the commit (git update-index --chmod=+x); times in UTC; no
      effect on a Docker app.
   3. Deploy:  clever deploy --alias $APP  (committed HEAD only; shallow

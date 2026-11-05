@@ -132,7 +132,8 @@ history's author nor the global config; say it. An `add-file` action (a Caddyfil
 `content` as it is. Hard-coded credentials → add-on variables, today's value only as a local fallback. Storage
 rewrites: every call site and the shared client the plan lists (rule 11). No auth in the source: keep it anonymous,
 never invent auth, repeat the plan's **OPEN RISK** in the final report. Cron: copy `templates/cron/`
-(`reference/runtimes-hooks.md`: empty job environment, `CRON_RUNS_HERE=1` on the one app that runs the jobs).
+(`reference/runtimes-hooks.md`: empty job environment, `CRON_RUNS_HERE=1` on the one app that runs the jobs;
+instance 0 is a first filter only, the job stays idempotent per slot).
 
 **b. Provision**: dry run, explicit yes, then run.
 ```bash

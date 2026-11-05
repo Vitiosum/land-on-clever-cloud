@@ -769,7 +769,7 @@ Labels: [read] found in my repository, [assumed] a default nobody confirmed, [es
 - data: `«SQLite file on the VM (not in git)»` → `«one-time copy into the PostgreSQL add-on with scripts/migrate-sqlite.…»` (adaptation) [read] `«app.py:19»`
 - cellar: `«files on the VM disk»` → `«Cellar (S3) add-on S (replaces the uploads folder (the disk is epheme…»` (native) [read] `«app.py:62»`
 - files: `«uploaded files on the VM (not in git)»` → `«one-time copy into the bucket local-flask-sqlite-poc-files with scrip…»` (adaptation) [read] `«app.py:62»`
-- cron: `«crontab: 30 3 * * *»` → `«clevercloud/cron.json + templates/cron/ (run mode: one instance, empt…»` (adaptation) [read] `«deploy/crontab:2»`
+- cron: `«crontab: 30 3 * * *»` → `«clevercloud/cron.json + templates/cron/ (run mode: instance 0 first, …»` (adaptation) [read] `«deploy/crontab:2»`
 - Health data: yes (answered)
 - HDS contract: not signed (answered)
 - Data: 0.2 GB; files: 1 GB

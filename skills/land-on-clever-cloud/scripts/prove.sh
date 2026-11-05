@@ -56,8 +56,8 @@
 #   --cron-wait SECONDS  keep re-reading the logs (every 20 s) until that line appears, bounded
 #                        (use with a temporary */2 schedule on the POC branch: runtimes-hooks.md).
 #                        It first waits for the latest deployment to finish and only counts CMDOUT
-#                        lines logged AFTER that: during a zero-downtime deploy the old and the new
-#                        instance both carry INSTANCE_NUMBER 0 and both run the job.
+#                        lines logged AFTER that: during a deploy (a scale-up or a restart too) the old
+#                        and the new instance both carry INSTANCE_NUMBER 0 and both run the job.
 #   --log-expect TEXT    TEXT must appear in those logs (e.g. a worker's "Processing vote")
 #   --build-expect TEXT  TEXT must appear in those logs too, as build evidence (e.g. "Applying"
 #                        for Django migrations run by CC_PYTHON_MANAGE_TASKS) → [observed]
@@ -645,7 +645,7 @@ except Exception:
         clever logs --alias "$ALIAS" --since "$CRONSINCE" --until now > "$TMP/logs" 2>&1 || true
       done
       NRUN=$(grep -F 'CMDOUT' "$TMP/logs" | grep -cF -- "$CRONX" | tr -d ' ')
-      if [ "${NRUN:-0}" -gt 1 ]; then rec WARN "cron output seen $NRUN times since $CRONSINCE: twice in the same minute means two instances ran it (overlap, or INSTANCE_NUMBER not deduplicated)"; fi
+      if [ "${NRUN:-0}" -gt 1 ]; then rec WARN "cron output seen $NRUN times since $CRONSINCE: twice in the same minute means two instances ran it (two instances 0 overlap during a deploy, a scale-up or a restart: instance 0 is a first filter only, the job must be idempotent per slot, runtimes-hooks.md)"; fi
       if grep -F 'CMDOUT' "$TMP/logs" | grep -qF -- "$CRONX"; then rec PASS "[observed] cron job output (CMDOUT) contains \"$CRONX\""
       else rec FAIL "no cron output (CMDOUT) with \"$CRONX\" since $LOGSINCE${CRONWAIT:+ (waited ${CRONWAIT} s)} — job not proven (if the route is proven, say exactly that); jobs run with an EMPTY environment: runtimes-hooks.md"; fi
     fi
